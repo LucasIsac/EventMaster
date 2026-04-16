@@ -214,8 +214,28 @@ new ListGenerator([10, 20, 30]) → 10, 20, 30, 30, 30, ...
 ```
 
 **ExponentialGenerator**: Distribución exponencial (para M/M/1 real)
+
 ```javascript
 new ExponentialGenerator(45) → valores aleatorios con media 45
+```
+
+**Fórmula matemática (transformación inversa):**
+```javascript
+next() {
+  return -this.mean * Math.log(1 - Math.random());
+}
+```
+
+- `Math.random()` genera un valor U ∈ [0,1] con distribución uniforme
+- `-mean * ln(1 - U)` transforma U a distribución exponencial con media = `mean`
+- Esto permite simulaciones M/M/1 reales donde la variabilidad del tiempo de servicio no es constante
+
+**Ejemplo de uso:**
+```javascript
+// Para una media de 45 segundos:
+const serviceGenerator = new ExponentialGenerator(45);
+
+// Valores típicos: 12.3, 67.8, 44.1, 23.9, 89.2, ...
 ```
 
 ### 5.3 Factory createGenerator
