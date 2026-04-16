@@ -10,13 +10,15 @@ function App() {
     serviceTime: '40',
     workTime: 0,
     restTime: 0,
-    maxWaitTime: Infinity
+    maxWaitTime: Infinity,
+    travelTime: 0
   });
   
   const [flags, setFlags] = useState({
     hasServerBreaks: false,
     hasClientAbandonment: false,
-    hasPriority: false
+    hasPriority: false,
+    hasSecurityZone: false
   });
   
   const [initialState, setInitialState] = useState({
@@ -273,6 +275,14 @@ function App() {
                   <span className="slider"></span>
                   <span>Clientes VIP</span>
                 </label>
+                <label className="switch">
+                  <input type="checkbox" checked={flags.hasSecurityZone} onChange={(e) => updateFlags('hasSecurityZone', e.target.checked)} />
+                  <span className="slider"></span>
+                  <span>Zona de Seguridad</span>
+                </label>
+                {flags.hasSecurityZone && (
+                  <label><span>ΔtSZ→PS (seg)</span><input type="number" value={config.travelTime} onChange={(e) => updateConfig('travelTime', parseInt(e.target.value) || 0)} /></label>
+                )}
               </div>
             </div>
           </div>
