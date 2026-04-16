@@ -9,7 +9,6 @@ El simulador permite:
 - Configurar prioridades (clientes VIP)
 - Manejar abandonos cuando el tiempo de espera excede un límite
 - Simular ciclos de trabajo/descanso del servidor
-- Implementar el patrón de "Zona de Seguridad" (dos recursos secuenciales)
 
 ---
 
@@ -20,12 +19,9 @@ eventmaster-web/
 ├── src/
 │   ├── engine/
 │   │   └── Simulator.js      # Motor de simulación DES
-│   ├── utils/
-│   │   └── generators.js     # Generadores de valores aleatorios
 │   ├── App.jsx               # Componente React principal (UI)
 │   ├── App.css               # Estilos
-│   ├── main.jsx              # Entry point
-│   └── index.js              # Exports públicos
+│   └── main.jsx              # Entry point
 ├── public/
 │   └── favicon.svg
 ├── index.html
@@ -44,10 +40,10 @@ eventmaster-web/
 
 1. Se crea una instancia del `Simulator` con:
    - **Config**: maxTime, startTime, arrivalInterval, serviceTime, etc.
-   - **Flags**: hasPriority, hasClientAbandonment, hasServerBreaks, hasSecurityZone
+   - **Flags**: hasPriority, hasClientAbandonment, hasServerBreaks
    - **InitialState**: clientes iniciales en cola, estado inicial del servidor
 
-2. Se inicializan los generadores de valores (Constant, List, o Exponential)
+2. Se inicializan los arrays de tiempos de llegada y servicio usando `parseArrayInput()`
 
 3. Se programa la primera llegada y (si aplica) el primer ciclo de trabajo
 
@@ -79,8 +75,6 @@ Cada `step()` ejecuta:
 | `SALIDA_SERVIDOR` | El servidor comienza su período de descanso |
 | `LLEGADA_SERVIDOR` | El servidor termina su descanso y vuelve |
 | `ABANDONO` | Un cliente abandona la cola por timeout |
-| `ENTER_SZ` | Cliente entra a la Zona de Seguridad (hasSecurityZone) |
-| `LLEGADA_PS` | Cliente llega al Punto de Servicio tras cruzar SZ |
 
 ### 3.4 Finalización
 
@@ -112,16 +106,79 @@ export const EventType = {
   SERVICE_END: 'FIN_SERVICIO',
   SERVER_BREAK_START: 'SALIDA_SERVIDOR',
   SERVER_BREAK_END: 'LLEGADA_SERVIDOR',
-  ABANDONO: 'ABANDONO',
-  ENTER_SZ: 'ENTER_SZ',
-  ARRIVAL_PS: 'LLEGADA_PS'
+  ABANDONMENT: 'ABANDONO'
 };
 ```
 
-### 4.2 Clase Simulator - Constructor
+### 4.2 Funciones Auxiliares
+
+#### parseArrayInput(value)
+Convierte el input del usuario en un formato usable internamente:
 
 ```javascript
-constructor(config, flags, initialState = {}, generators = {})
+// Número → array simple
+parseArrayInput(45) → [45]
+
+// Lista string → array
+parseArrayInput("30,45,60") → [30, 45, 60]
+
+// Rango → objeto con bounds
+parseArrayInput("30-60") → { min: 30, max: 60, isRange: true }
+```
+
+#### getNextValue(arrayObj, indexRef)
+Genera el siguiente valor según el tipo de array:
+
+```javascript
+// Constante (array simple): devuelve el valor en el índice actual
+[45, 45, 45] → 45, 45, 45, ...
+
+// Lista: recorre la lista
+[30, 45, 60] → 30, 45, 60, 60, 60, ...
+
+// Rango: genera valor aleatorio entre min y max
+{ min: 30, max: 60, isRange: true } → 42.3, 35.7, 51.2, ...
+```
+
+#### createClient(arrivalTime, config, flags, isVip)
+Crea un objeto cliente:
+
+```javascript
+{
+  id: 1,
+  arrivalTime: 100,
+  patienceTime: 60,      // maxWaitTime del config
+  priority: 'A' o 'B'   // según sea VIP o no
+}
+```
+
+Si `flags.hasPriority = true`, el cliente tiene 30% de probabilidad de ser VIP.
+
+#### createEvent(time, type, data)
+Crea un evento para la FEL:
+
+```javascript
+{
+  id: 1,
+  time: 100,
+  type: 'LLEGADA',
+  data: {},
+  priority: 4  // Menor = más prioritario
+}
+```
+
+Prioridades de eventos:
+- SERVICE_END: 1
+- SERVER_BREAK_END: 2
+- ARRIVAL_VIP: 3
+- ARRIVAL: 4
+- SERVER_BREAK_START: 5
+- ABANDONMENT: 5
+
+### 4.3 Clase Simulator - Constructor
+
+```javascript
+constructor(config, flags, initialState = {})
 ```
 
 **Configuración (config):**
@@ -132,36 +189,40 @@ constructor(config, flags, initialState = {}, generators = {})
 - `workTime`: Duración del período de trabajo (para ciclos)
 - `restTime`: Duración del período de descanso
 - `maxWaitTime`: Tiempo máximo de espera antes de abandono
-- `travelTime`: Tiempo de cruce de la Zona de Seguridad
+- `vipArrivalInterval`: Intervalo entre llegadas VIP (opcional)
 
 **Flags:**
 - `hasPriority`: Habilitar clientes VIP (30% de probabilidad)
 - `hasClientAbandonment`: Habilitar abandonos por timeout
 - `hasServerBreaks`: Habilitar ciclos de trabajo/descanso
-- `hasSecurityZone`: Usar modelo de dos recursos (SZ + PS)
 
-**Generators:**
-- Si no se proveen, se crean automáticamente desde config usando `ConstantGenerator`
-- Permite usar `ListGenerator` (listas reproducibles) o `ExponentialGenerator` (M/M/1)
+**InitialState:**
+- `clientsInQueue`: Clientes iniciales en cola común
+- `vipClientsInQueue`: Clientes iniciales en cola VIP
+- `serverBusy`: Si el servidor inicia atendiendo
+- `busyUntil`: Tiempo hasta que termina el servicio inicial
 
-### 4.3 Métodos Privados Principales
+### 4.4 Métodos Privados Principales
 
 | Método | Función |
 |--------|---------|
-| `#initialize()` | Configura estado inicial, cola, eventos programaods |
+| `#initialize()` | Configura estado inicial, cola, eventos programados |
+| `#scheduleFirstArrivals()` | Programa las primeras llegadas |
+| `#scheduleWorkCycle()` | Programa el ciclo de trabajo/descanso |
 | `#getNextEvent()` | Devuelve el evento con menor tiempo de la FEL |
+| `#removeEvent()` | Elimina un evento de la FEL |
+| `#advanceClock()` | Avanza el reloj y verifica abandonos |
+| `#checkAbandonments()` | Verifica clientes que excedieron su tiempo de espera |
 | `#handleArrival()` | Procesa llegada de cliente (normal o VIP) |
+| `#scheduleNextArrival()` | Programa la siguiente llegada |
 | `#handleServiceEnd()` | Procesa fin de servicio |
-| `#handleAbandonment()` | Procesa abandono de cliente específico |
+| `#selectNextClient()` | Selecciona siguiente cliente (VIP primero si aplica) |
 | `#handleServerBreakStart()` | Inicia período de descanso del servidor |
 | `#handleServerBreakEnd()` | Finaliza período de descanso |
-| `#handleEnterSZ()` | Cliente entra a la Zona de Seguridad |
-| `#handleArrivalPS()` | Cliente llega al Punto de Servicio |
-| `#selectNextClient()` | Selecciona siguiente cliente (VIP primero si aplica) |
 | `#getTotalQueue()` | Devuelve tamaño total de cola |
 | `#recordHistory()` | Registra estado actual en historial |
 
-### 4.4 Métodos Públicos
+### 4.5 Métodos Públicos
 
 | Método | Retorna |
 |--------|---------|
@@ -172,7 +233,7 @@ constructor(config, flags, initialState = {}, generators = {})
 | `getNextEventTime()` | Tiempo del próximo evento o null |
 | `isFinished()` | `true` si no hay más eventos o superó maxTime |
 
-### 4.5 Estadísticas (stats)
+### 4.6 Estadísticas (stats)
 
 ```javascript
 {
@@ -190,60 +251,29 @@ constructor(config, flags, initialState = {}, generators = {})
 
 ---
 
-## 5. Sistema de Generadores (generators.js)
+## 5. Sistema de Generación de Valores
 
-### 5.1 Clase Base Generator
+El sistema utiliza funciones auxiliares para generar valores de tiempo:
 
+### 5.1 Valor Constante
 ```javascript
-class Generator {
-  next() { /* retorna siguiente valor */ }
-  getDesc() { /* retorna descripción */ }
-}
+// Input: "45" o 45
+// Output: siempre 45
 ```
 
-### 5.2 Generadores Disponibles
-
-**ConstantGenerator**: Siempre devuelve el mismo valor
+### 5.2 Lista de Valores
 ```javascript
-new ConstantGenerator(45) → 45, 45, 45, ...
+// Input: "30,45,60"
+// Output: 30, 45, 60, 60, 60, ...
+// Al llegar al final, repite el último valor
 ```
 
-**ListGenerator**: Recorre una lista, luego repite el último
+### 5.3 Rango Aleatorio
 ```javascript
-new ListGenerator([10, 20, 30]) → 10, 20, 30, 30, 30, ...
-```
-
-**ExponentialGenerator**: Distribución exponencial (para M/M/1 real)
-
-```javascript
-new ExponentialGenerator(45) → valores aleatorios con media 45
-```
-
-**Fórmula matemática (transformación inversa):**
-```javascript
-next() {
-  return -this.mean * Math.log(1 - Math.random());
-}
-```
-
-- `Math.random()` genera un valor U ∈ [0,1] con distribución uniforme
-- `-mean * ln(1 - U)` transforma U a distribución exponencial con media = `mean`
-- Esto permite simulaciones M/M/1 reales donde la variabilidad del tiempo de servicio no es constante
-
-**Ejemplo de uso:**
-```javascript
-// Para una media de 45 segundos:
-const serviceGenerator = new ExponentialGenerator(45);
-
-// Valores típicos: 12.3, 67.8, 44.1, 23.9, 89.2, ...
-```
-
-### 5.3 Factory createGenerator
-
-```javascript
-createGenerator(type, value)
-// type: 'constant' | 'list' | 'exponential'
-// value: número (constant/exponential) o array (list)
+// Input: "30-60"
+// Output: 42.3, 35.7, 51.2, 28.9, ...
+// Genera valores aleatorios uniforme entre min y max
+// Fórmula: min + Math.random() * (max - min)
 ```
 
 ---
@@ -278,6 +308,7 @@ Formato: igual que llegada
 | Campo | Descripción |
 |-------|--------------|
 | Clientes en cola | `clientsInQueue` - Clientes iniciales en cola común |
+| Clientes VIP en cola | `vipClientsInQueue` - Clientes VIP iniciales |
 | Servidor ocupado | `serverBusy` - Si el servidor inicia atendiendo |
 | Ocupado hasta | `busyUntil` - Tiempo hasta que termina el servicio inicial |
 
@@ -296,31 +327,24 @@ Formato: igual que llegada
 | Abandonos | `hasClientAbandonment` - Habilitar abandonos |
 | ΔSC (seg) | `maxWaitTime` - Tiempo máximo de espera |
 | Clientes VIP | `hasPriority` - Habilitar clientes VIP (30%) |
-| Zona de Seguridad | `hasSecurityZone` - Usar modelo SZ→PS |
-| ΔtSZ→PS (seg) | `travelTime` - Tiempo de cruce de SZ |
 
 ---
 
 ## 7. Lógica de Abandono (Reneging)
 
-### Antes del Plan de Evolución
-Se iteraba sobre toda la cola en cada paso del reloj, verificando si el tiempo de espera superaba la paciencia. Problema: podía eliminar clientes ya atendidos.
-
-### Después del Plan de Evolución
-1. Cuando un cliente entra a la cola y `hasClientAbandonment=true`, se programa un evento `ABANDONMENT` específico con su `clientId`
-2. Cuando se procesa el evento, se busca al cliente por ID
-3. Si ya no está en cola (ya fue atendido), se ignora el evento
+### Cómo funciona
+En cada avance del reloj (`#advanceClock`), si `hasClientAbandonment` está habilitado, se llama a `#checkAbandonments(currentTime)`:
 
 ```javascript
-// En #handleArrival(), cuando el cliente va a la cola:
-if (this.flags.hasClientAbandonment && client.patienceTime < Infinity) {
-  this.fel.push(createEvent(
-    this.clock + client.patienceTime,
-    EventType.ABANDONMENT,
-    { clientId: client.id }
-  ));
+#checkAbandonments(currentTime) {
+  // Para cada cola (VIP y común):
+  // 1. Calcular tiempo de espera = currentTime - client.arrivalTime
+  // 2. Si tiempo > patienceTime (maxWaitTime), marcar para eliminar
+  // 3. Eliminar clientes marcados y registrar abandono
 }
 ```
+
+**Nota:** Este método verifica toda la cola en cada paso.
 
 ---
 
@@ -328,8 +352,15 @@ if (this.flags.hasClientAbandonment && client.patienceTime < Infinity) {
 
 ### Estructura de Colas
 El sistema mantiene dos colas independientes:
-- `this.queue` - Clientes normales
-- `this.vipQueue` - Clientes VIP
+- `this.queue` - Clientes normales (prioridad A)
+- `this.vipQueue` - Clientes VIP (prioridad B)
+
+### Generación de Clientes
+```javascript
+// En createClient():
+const vip = isVip || (flags.hasPriority && Math.random() < 0.3);
+// 30% de probabilidad de ser VIP si hasPriority está habilitado
+```
 
 ### Selección de Cliente
 En `#selectNextClient()`:
@@ -341,50 +372,11 @@ if (this.vipQueue.length > 0) {
 }
 ```
 
-Esto es O(1) en lugar de O(n) que sería con un sort.
+Esto es O(1).
 
 ---
 
-## 9. Zona de Seguridad (Problema 5)
-
-### Concepto
-Sistema con dos recursos secuenciales:
-- **SZ (Zona de Seguridad)**: Tiempo de viaje `travelTime`
-- **PS (Punto de Servicio)**: Tiempo de servicio `serviceTime`
-
-### Flujo de Eventos
-
-```
-LLEGADA → [cola si occupied] → ENTER_SZ → (travelTime) → LLEGADA_PS → FIN_SERVICIO
-```
-
-### Estados
-- `szBusy`: true si hay un cliente cruzando la SZ
-- `serverState`: representa el estado del PS
-
-### Lógica en #handleArrival() (con SZ)
-```javascript
-if (queueEmpty && !szBusy && serverState === IDLE) {
-  // Todo libre → entrar a SZ inmediatamente
-  fel.push(createEvent(clock, EventType.ENTER_SZ));
-} else {
-  // Algo ocupado → encolar
-}
-```
-
-### Lógica en #handleServiceEnd() (con SZ)
-```javascript
-// Al terminar servicio, liberar servidor y verificar siguiente cliente
-serverState = IDLE;
-nextClient = selector();
-if (nextClient) {
-  fel.push(createEvent(clock, EventType.ENTER_SZ)); // Mismo instante
-}
-```
-
----
-
-## 10. FEL (Future Event List)
+## 9. FEL (Future Event List)
 
 La FEL es un array de eventos ordenado por tiempo y prioridad.
 
@@ -394,26 +386,24 @@ La FEL es un array de eventos ordenado por tiempo y prioridad.
   id: 1,
   time: 100,
   type: 'LLEGADA',
-  data: { clientId: 5 },
-  priority: 4  // Menor = más prioritario en caso de igualdad
+  data: {},
+  priority: 4
 }
 ```
 
-### Prioridades de Eventos (menor = primero)
+### Obtención del siguiente evento
 ```javascript
-{
-  SERVICE_END: 1,
-  SERVER_BREAK_END: 2,
-  ARRIVAL_VIP: 3,
-  ARRIVAL: 4,
-  SERVER_BREAK_START: 5,
-  ABANDONMENT: 5
-}
+// En #getNextEvent():
+this.fel.reduce((min, e) =>
+  e.time < min.time || (e.time === min.time && e.priority < min.priority) ? e : min
+);
 ```
+
+Selecciona el evento con menor tiempo. Si hay varios con el mismo tiempo, usa la prioridad (menor = más importante).
 
 ---
 
-## 11. Historial de Simulación
+## 10. Historial de Simulación
 
 Cada paso se registra en `this.history` con:
 
@@ -439,7 +429,7 @@ Cada paso se registra en `this.history` con:
 
 ---
 
-## 12. Integración con React (App.jsx)
+## 11. Integración con React (App.jsx)
 
 ### Flujo de la UI
 1. Usuario configura parámetros en los formularios
@@ -468,33 +458,7 @@ Cada paso se registra en `this.history` con:
 
 ---
 
-## 13. Exports Públicos (index.js)
-
-```javascript
-export { Simulator } from './engine/Simulator.js';
-export { ServerState, ClientPriority, EventType } from './engine/Simulator.js';
-export { Generator, ConstantGenerator, ListGenerator, ExponentialGenerator, createGenerator } from './utils/generators.js';
-```
-
----
-
-## 14. Validación y Testing
-
-### Tests Implementados
-1. **Simulación básica**: Verifica que corra sin errores
-2. **Prioridad**: Verifica que atienda clientes VIP primero
-3. **Abandono**: Verifica que abandonos funcionen correctamente
-4. **Zona de Seguridad**: Verifica que ENTER_SZ y LLEGADA_PS aparezcan
-5. **Generadores**: Verifica que cada tipo funcione correctamente
-
-### Para Ejecutar Tests
-```bash
-node --experimental-vm-modules test-simulator.js
-```
-
----
-
-## 15. Comandos del Proyecto
+## 12. Comandos del Proyecto
 
 | Comando | Descripción |
 |---------|--------------|
@@ -504,12 +468,12 @@ node --experimental-vm-modules test-simulator.js
 
 ---
 
-## 16. Glosario
+## 13. Glosario
 
 - **DES**: Simulación de Eventos Discretos
 - **FEL**: Future Event List (Lista de Eventos Futuros)
-- **SZ**: Zona de Seguridad
-- **PS**: Punto de Servicio
 - **VIP**: Cliente con prioridad alta
 - **Reneging**: Abandono por timeout
 - **Cola M/M/1**: Markoviana llegada, Markoviana servicio, 1 servidor
+- **parseArrayInput**: Función que convierte input del usuario (número, lista, rango) a formato interno
+- **getNextValue**: Función que genera el siguiente valor de tiempo según el tipo de array
