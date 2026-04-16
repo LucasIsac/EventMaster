@@ -261,10 +261,6 @@ export class Simulator {
     }
   }
 
-  #hasArrivalEvent() {
-    return this.fel.some(e => e.type === EventType.ARRIVAL || e.type === EventType.ARRIVAL_VIP);
-  }
-
   #handleArrival(isVip = false) {
     if (!this.serverPresent) {
       const client = createClient(this.clock, this.config, this.flags, isVip);
@@ -461,6 +457,7 @@ export class Simulator {
   }
 
   run() {
+    // eslint-disable-next-line no-empty
     while (this.step()) { }
     return this.getResults();
   }
