@@ -19,6 +19,11 @@ eventmaster-web/
 ├── src/
 │   ├── engine/
 │   │   └── Simulator.js      # Motor de simulación DES
+│   ├── components/
+│   │   ├── TimeInput.jsx      # Input de hora HH:MM:SS
+│   │   └── TimeField.jsx      # Campo con modos de entrada
+│   ├── utils/
+│   │   └── timeParser.js      # Parser y generadores de valores
 │   ├── App.jsx               # Componente React principal (UI)
 │   ├── App.css               # Estilos
 │   └── main.jsx              # Entry point
@@ -28,6 +33,7 @@ eventmaster-web/
 ├── package.json
 ├── vite.config.js
 ├── eslint.config.js
+├── VISUAL_REVIEW_SKILL.md     # Skill de revisión visual
 ├── plan_evolucion.md         # Historial de evoluciones
 └── DOCUMENTACION.md          # Este archivo
 ```
@@ -477,3 +483,74 @@ Cada paso se registra en `this.history` con:
 - **Cola M/M/1**: Markoviana llegada, Markoviana servicio, 1 servidor
 - **parseArrayInput**: Función que convierte input del usuario (número, lista, rango) a formato interno
 - **getNextValue**: Función que genera el siguiente valor de tiempo según el tipo de array
+
+---
+
+## 14. Componentes de UI
+
+### 14.1 TimeInput
+
+Componente para ingresar hora en formato HH:MM:SS.
+
+```javascript
+import TimeInput from './components/TimeInput';
+
+// Uso:
+<TimeInput 
+  value={28800}  // valor en segundos
+  onChange={(nuevoValor) => console.log(nuevoValor)} 
+/>
+```
+
+**Características:**
+- Tres campos numéricos separados (HH, MM, SS)
+- Validación: HH 0-23, MM/SS 0-59
+- Navegación con flechas del teclado
+
+### 14.2 TimeField
+
+Componente para ingresar valores de tiempo con soporte para múltiples modos.
+
+```javascript
+import TimeField from './components/TimeField';
+
+// Uso:
+<TimeField 
+  value="30 - 60"
+  onChange={(valor) => console.log(valor)}
+  placeholder="45"
+/>
+```
+
+**Modos de entrada:**
+- **Constante**: `45` → siempre usa ese valor
+- **Lista**: `30,45,60` → recorre valores en orden
+- **Rango Uniforme**: `30 - 60` → valor aleatorio entre 30 y 60
+- **Rango Exponencial**: `30 - 60` con selector "Exponencial" → distribución exponencial con media 45
+
+**Indicadores visuales:**
+- Azul: Constante
+- Verde: Lista
+- Naranja: Rango Uniforme
+- Violeta: Rango Exponencial
+- Rojo: Error de formato
+
+### 14.3 timeParser (utils)
+
+Utilidades para parsing y generación de valores aleatorios.
+
+```javascript
+import { parseTimeInput, createValueGenerator, getModeLabel } from './utils/timeParser';
+
+// parseTimeInput: detecta el modo del input
+const parsed = parseTimeInput("30 - 60");
+// { mode: 'range', min: 30, max: 60 }
+
+// createValueGenerator: crea función generadora
+const generator = createValueGenerator(parsed, 'uniform');
+generator(); // returns random between 30-60
+
+// getModeLabel: obtiene label para mostrar en UI
+const label = getModeLabel(parsed);
+// { text: 'Rango: 30 - 60', type: 'range' }
+```
