@@ -5,17 +5,19 @@ import TimeField from './components/TimeField';
 import './App.css';
 
 function App() {
+  // Estado para la configuración de la simulación
   const [config, setConfig] = useState({
-    maxTime: 600,
-    startTime: 28800,
-    arrivalInterval: '45',
-    serviceTime: '40',
+    maxTime: 600, // Tiempo máximo a simular (segundos)
+    startTime: 28800, // Hora de inicio en segundos (ej: 08:00:00 = 28800)
+    arrivalInterval: '45', // Delta t de llegadas (puede ser constante, lista o rango)
+    serviceTime: '40', // Delta t de servicio
     workTime: 0,
     restTime: 0,
-    maxWaitTime: Infinity,
-    travelTime: 0
+    maxWaitTime: Infinity, // Tiempo de paciencia de los clientes
+    travelTime: 0 // Tiempo de viaje para Zona de Seguridad
   });
   
+  // Banderas para habilitar/deshabilitar funcionalidades especiales
   const [flags, setFlags] = useState({
     hasServerBreaks: false,
     hasClientAbandonment: false,
@@ -23,12 +25,14 @@ function App() {
     hasSecurityZone: false
   });
   
+  // Estado inicial del sistema antes de empezar
   const [initialState, setInitialState] = useState({
     clientsInQueue: 0,
     serverBusy: false,
     busyUntil: 0
   });
   
+  // Referencias al motor de simulación y el estado actual capturado
   const [simulator, setSimulator] = useState(null);
   const [currentState, setCurrentState] = useState(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -37,6 +41,9 @@ function App() {
   const [showHelp, setShowHelp] = useState(false);
   const intervalRef = useRef(null);
 
+  /**
+   * Inicializa una nueva instancia del simulador con la configuración actual.
+   */
   const initialize = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     setIsRunning(false);
@@ -52,6 +59,9 @@ function App() {
     setHasStarted(true);
   }, [config, flags, initialState]);
 
+  /**
+   * Avanza un único paso (un evento) en la simulación.
+   */
   const step = useCallback(() => {
     if (!simulator) return;
     if (simulator.isFinished()) {
@@ -62,6 +72,9 @@ function App() {
     setCurrentState(simulator.getCurrentState());
   }, [simulator]);
 
+  /**
+   * Ejecuta la simulación de forma continua a una velocidad determinada.
+   */
   const run = useCallback(() => {
     if (!simulator) return;
     setIsRunning(true);
@@ -78,6 +91,9 @@ function App() {
     }, interval);
   }, [simulator, speed]);
 
+  /**
+   * Reinicia todo el sistema a su estado original.
+   */
   const resetAll = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     setIsRunning(false);
@@ -91,12 +107,14 @@ function App() {
     setIsRunning(false);
   }, []);
 
+  // Limpieza de intervalos al desmontar el componente
   useEffect(() => {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);
 
+  // Manejo de atajos de teclado para facilitar el uso del simulador
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.target.tagName === 'INPUT') return;
@@ -113,6 +131,9 @@ function App() {
   const updateFlags = (key, value) => setFlags(prev => ({ ...prev, [key]: value }));
   const updateInitialState = (key, value) => setInitialState(prev => ({ ...prev, [key]: value }));
 
+  /**
+   * Calcula el porcentaje de utilización del servidor.
+   */
   const calculateUtilization = () => {
     if (!currentState) return '0.0';
     const totalTime = currentState.clock - config.startTime;
@@ -121,6 +142,9 @@ function App() {
     return (busyTime / totalTime * 100).toFixed(1);
   };
 
+  /**
+   * Calcula el progreso de la simulación para la barra visual.
+   */
   const getProgress = () => {
     if (!currentState) return 0;
     const total = config.startTime + config.maxTime;
@@ -128,6 +152,9 @@ function App() {
     return Math.min(100, (current / total) * 100);
   };
 
+  /**
+   * Exporta el historial de la simulación a un archivo CSV.
+   */
   const exportResults = () => {
     if (!currentState || currentState.history.length === 0) return;
     const csv = [
@@ -159,6 +186,7 @@ function App() {
       </header>
 
       <main className="main">
+        {/* Sección de Configuración de Parámetros */}
         <section className="config-section">
           <div className="card">
             <div className="config-grid">
@@ -271,6 +299,7 @@ function App() {
           </div>
         </section>
 
+        {/* Sección de Controles de Ejecución */}
         <section className="control-section">
           <div className="progress-bar-container">
             <div className="progress-bar" style={{ width: `${getProgress()}%` }}></div>
@@ -305,6 +334,7 @@ function App() {
           )}
         </section>
 
+        {/* Sección de Estadísticas y Visualización en tiempo real */}
         <section className="stats-section">
           <div className="stats-grid">
             <StatBox label="Tiempo" value={currentState ? formatTime(currentState.clock) : '--:--'} color="blue" />
@@ -362,6 +392,7 @@ function App() {
           )}
         </section>
 
+        {/* Sección de la Tabla de Eventos Detallada */}
         <section className="results-section">
           <div className="card">
             <h2>📊 Tabla de Simulación de Eventos Discretos</h2>
@@ -380,6 +411,9 @@ function App() {
   );
 }
 
+/**
+ * Componente que renderiza la tabla avanzada con todo el historial.
+ */
 function AdvancedTable({ history, flags }) {
   const formatTime = (seconds, startTime = 0) => {
     if (seconds === null || seconds === undefined || seconds === Infinity) return '-';
@@ -392,6 +426,9 @@ function AdvancedTable({ history, flags }) {
     return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
   };
 
+  /**
+   * Identifica el evento anterior para resaltar el origen de los tiempos generados.
+   */
   const getEventOrigin = (entry, history) => {
     if (entry.step === 1) return null;
     const prevEntry = history[entry.step - 2];
@@ -405,6 +442,9 @@ function AdvancedTable({ history, flags }) {
     return 'A';
   };
 
+  /**
+   * Procesa la FEL para extraer los tiempos de los próximos eventos.
+   */
   const getFelEvents = (entry) => {
     const events = {
       nextArrival: null,
@@ -431,10 +471,13 @@ function AdvancedTable({ history, flags }) {
     return events;
   };
 
+  /**
+   * Determina cuántas columnas de abandono mostrar según el tamaño de la cola.
+   */
   const getMaxQueueSize = () => {
     if (!history.length) return 3;
     const maxInHistory = Math.max(3, ...history.map(h => h.queueLength));
-    return Math.min(maxInHistory, 4); // Limitar a 4 columnas máximo
+    return Math.min(maxInHistory, 4); // Limitar a 4 columnas máximo para no romper el layout
   };
 
   const maxQueue = getMaxQueueSize();
@@ -547,6 +590,9 @@ function AdvancedTable({ history, flags }) {
   );
 }
 
+/**
+ * Componente visual para mostrar un indicador estadístico simple.
+ */
 function StatBox({ label, value, color, icon }) {
   return (
     <div className={`stat-box stat-${color}`}>
@@ -557,6 +603,9 @@ function StatBox({ label, value, color, icon }) {
   );
 }
 
+/**
+ * Función auxiliar de formateo de tiempo HH:MM:SS o MM:SS.
+ */
 function formatTime(seconds, startTime = 0) {
   const abs = startTime + seconds;
   const t = Math.floor(abs);

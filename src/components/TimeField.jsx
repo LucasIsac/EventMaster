@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { parseTimeInput, getModeLabel } from '../utils/timeParser';
 
+/**
+ * Componente de entrada de texto inteligente que detecta si el usuario ingresa
+ * un valor constante, una lista de valores o un rango, y permite elegir la distribución.
+ */
 function TimeField({ value, onChange, placeholder }) {
   const [distType, setDistType] = useState('uniform');
   const parsed = parseTimeInput(value);
@@ -10,13 +14,16 @@ function TimeField({ value, onChange, placeholder }) {
     onChange(newValue);
   };
 
+  /**
+   * Retorna un color representativo para cada modo detectado.
+   */
   const getModeColor = (type) => {
     switch (type) {
-      case 'constant': return '#3b82f6';
-      case 'list': return '#10b981';
-      case 'range': return distType === 'exponential' ? '#8b5cf6' : '#f59e0b';
-      case 'error': return '#ef4444';
-      default: return '#64748b';
+      case 'constant': return '#3b82f6'; // Azul
+      case 'list': return '#10b981';     // Verde
+      case 'range': return distType === 'exponential' ? '#8b5cf6' : '#f59e0b'; // Violeta o Naranja
+      case 'error': return '#ef4444';    // Rojo
+      default: return '#64748b';         // Gris
     }
   };
 
@@ -29,11 +36,13 @@ function TimeField({ value, onChange, placeholder }) {
         placeholder={placeholder}
         className="time-field-input"
       />
+      {/* Indicador visual del modo detectado (constante, lista, rango) */}
       {modeInfo && (
         <div className="time-field-indicator" style={{ color: getModeColor(modeInfo.type) }}>
           {modeInfo.type === 'range' && (
             <>
               <span>{modeInfo.text}</span>
+              {/* Selector de distribución para el modo rango */}
               <div className="dist-selector">
                 <button
                   type="button"

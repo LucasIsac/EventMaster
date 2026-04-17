@@ -1,16 +1,19 @@
 import { ConstantGenerator, ListGenerator, UniformGenerator, ExponentialGenerator } from '../utils/generators.js';
 
+// Posibles estados del servidor
 export const ServerState = {
   IDLE: 'LIBRE',
   BUSY: 'OCUPADO',
   BREAK: 'AUSENTE'
 };
 
+// Prioridades de los clientes
 export const ClientPriority = {
   NORMAL: 'A',
   VIP: 'B'
 };
 
+// Tipos de eventos para la Lista de Eventos Futuros (FEL)
 export const EventType = {
   ARRIVAL: 'LLEGADA',
   ARRIVAL_VIP: 'LLEGADA_VIP',
@@ -18,18 +21,22 @@ export const EventType = {
   SERVER_BREAK_START: 'SALIDA_SERVIDOR',
   SERVER_BREAK_END: 'LLEGADA_SERVIDOR',
   ABANDONMENT: 'ABANDONO',
-  ENTER_SZ: 'ENTER_SZ',
-  ARRIVAL_PS: 'LLEGADA_PS'
+  ENTER_SZ: 'ENTER_SZ', // Entrada a Zona de Seguridad
+  ARRIVAL_PS: 'LLEGADA_PS' // Llegada al Punto de Servicio
 };
 
 let clientIdCounter = 0;
 let eventIdCounter = 0;
 
+// Reinicia los contadores globales (útil para nuevas simulaciones)
 export function resetCounters() {
   clientIdCounter = 0;
   eventIdCounter = 0;
 }
 
+/**
+ * Crea un objeto cliente con sus propiedades.
+ */
 function createClient(arrivalTime, config, flags, isVip = false) {
   const vip = isVip || (flags.hasPriority && Math.random() < 0.3);
   return {
@@ -40,7 +47,11 @@ function createClient(arrivalTime, config, flags, isVip = false) {
   };
 }
 
+/**
+ * Crea un evento para la FEL.
+ */
 function createEvent(time, type, data = {}) {
+  // Prioridades de desempate para eventos en el mismo instante
   const priorities = {
     [EventType.SERVICE_END]: 1,
     [EventType.SERVER_BREAK_END]: 2,
@@ -58,12 +69,17 @@ function createEvent(time, type, data = {}) {
   };
 }
 
+/**
+ * Clase principal que gestiona la lógica de la simulación por eventos discretos.
+ */
 export class Simulator {
   constructor(config, flags, initialState = {}, generators = {}) {
     this.config = { ...config };
     this.flags = { ...flags };
 
-    // Helper to parse value and detect type
+    /**
+     * Parsea valores de entrada y detecta el tipo de generador necesario.
+     */
     const parseInputValue = (value, distType = 'uniform') => {
       if (typeof value !== 'string') {
         return { mode: 'constant', value: Number(value) || 0 };
@@ -71,7 +87,7 @@ export class Simulator {
       
       const trimmed = value.trim();
       
-      // Lista: contiene coma
+      // Lista: ej "10, 20, 30"
       if (trimmed.includes(',')) {
         const arr = trimmed.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
         if (arr.length > 0) {
@@ -79,14 +95,13 @@ export class Simulator {
         }
       }
       
-      // Rango: contiene guion (como "10-20" o "10 - 20")
+      // Rango: ej "10-20"
       if (trimmed.includes('-')) {
         const parts = trimmed.split('-').map(v => parseFloat(v.trim()));
         const min = parts[0];
         const max = parts[1];
         if (!isNaN(min) && !isNaN(max) && max > min) {
           if (distType === 'exponential') {
-            // Exponencial: usar promedio como media
             const mean = (min + max) / 2;
             return { mode: 'exponential', value: mean };
           }
@@ -94,42 +109,33 @@ export class Simulator {
         }
       }
       
-      // Constante: número simple
+      // Constante
       const num = Number(trimmed);
       if (!isNaN(num)) {
         return { mode: 'constant', value: num };
       }
       
-      return { mode: 'constant', value: 0 }; // Fallback
+      return { mode: 'constant', value: 0 };
     };
 
-    // Factory para arrival
+    // Inicialización de generadores para distintos propósitos
     const createArrivalGen = () => {
       const parsed = parseInputValue(this.config.arrivalInterval, this.config.arrivalDistType || 'uniform');
       switch (parsed.mode) {
-        case 'list':
-          return new ListGenerator(parsed.values);
-        case 'uniform':
-          return new UniformGenerator(parsed.min, parsed.max);
-        case 'exponential':
-          return new ExponentialGenerator(parsed.value);
-        default:
-          return new ConstantGenerator(parsed.value);
+        case 'list': return new ListGenerator(parsed.values);
+        case 'uniform': return new UniformGenerator(parsed.min, parsed.max);
+        case 'exponential': return new ExponentialGenerator(parsed.value);
+        default: return new ConstantGenerator(parsed.value);
       }
     };
 
-    // Factory para service
     const createServiceGen = () => {
       const parsed = parseInputValue(this.config.serviceTime, this.config.serviceDistType || 'uniform');
       switch (parsed.mode) {
-        case 'list':
-          return new ListGenerator(parsed.values);
-        case 'uniform':
-          return new UniformGenerator(parsed.min, parsed.max);
-        case 'exponential':
-          return new ExponentialGenerator(parsed.value);
-        default:
-          return new ConstantGenerator(parsed.value);
+        case 'list': return new ListGenerator(parsed.values);
+        case 'uniform': return new UniformGenerator(parsed.min, parsed.max);
+        case 'exponential': return new ExponentialGenerator(parsed.value);
+        default: return new ConstantGenerator(parsed.value);
       }
     };
 
@@ -140,25 +146,23 @@ export class Simulator {
       travel: generators.travel || new ConstantGenerator(Number(this.config.travelTime) || 0),
     };
 
-    // Historial de tiempos de servicio para estadísticas
+    // Estado interno y estadísticas
     this._serviceTimeHistory = [];
-
     this.initialState = initialState;
-
     this.workTime = config.workTime || 0;
     this.restTime = config.restTime || 0;
 
     this.clock = this.config.startTime;
-    this.fel = [];
-    this.queue = [];
-    this.vipQueue = [];
+    this.fel = []; // Lista de Eventos Futuros
+    this.queue = []; // Cola común
+    this.vipQueue = []; // Cola prioritaria
     this.serverState = ServerState.IDLE;
     this.serverPresent = true;
     this.clientInService = null;
     this.serviceEndTime = null;
     this.nextBreakTime = null;
     this.nextWorkTime = null;
-    this.szBusy = false; // Zona de Seguridad
+    this.szBusy = false; // Zona de Seguridad ocupada/libre
 
     this.stats = {
       clientsServed: 0,
@@ -174,11 +178,13 @@ export class Simulator {
     this.pausedClient = null;
     this.firstArrivalScheduled = false;
     this.firstVipArrivalScheduled = false;
-    this._serviceTimeHistory = [];
 
     this.#initialize();
   }
 
+  /**
+   * Configura el estado inicial según los parámetros recibidos.
+   */
   #initialize() {
     resetCounters();
 
@@ -187,6 +193,7 @@ export class Simulator {
     this.stats.clientsInQueueAtStart = clientsInQueue || 0;
     this.stats.vipClientsInQueueAtStart = vipClientsInQueue || 0;
 
+    // Poblar colas iniciales
     for (let i = 0; i < (vipClientsInQueue || 0); i++) {
       this.vipQueue.push(createClient(this.clock, this.config, this.flags, true));
     }
@@ -194,6 +201,7 @@ export class Simulator {
       this.queue.push(createClient(this.clock, this.config, this.flags, false));
     }
 
+    // Servidor ocupado desde el inicio
     if (serverBusy && busyUntil) {
       this.serverState = ServerState.BUSY;
       this.clientInService = createClient(this.config.startTime, this.config, this.flags, Math.random() < 0.3 && this.flags.hasPriority);
@@ -209,6 +217,9 @@ export class Simulator {
     this.#recordHistory('INICIO', 'Estado inicial');
   }
 
+  /**
+   * Programa las primeras llegadas de clientes normales y VIP.
+   */
   #scheduleFirstArrivals(serverBusy, busyUntil) {
     if (this.flags.hasPriority) {
       if (!this.firstVipArrivalScheduled) {
@@ -241,6 +252,9 @@ export class Simulator {
     }
   }
 
+  /**
+   * Programa el momento en que el servidor se toma un descanso.
+   */
   #scheduleWorkCycle() {
     if (!this.flags.hasServerBreaks || this.workTime <= 0) return;
 
@@ -250,6 +264,9 @@ export class Simulator {
     }
   }
 
+  /**
+   * Programa el momento en que el servidor regresa de un descanso.
+   */
   #scheduleNextWorkPeriod() {
     if (!this.flags.hasServerBreaks || this.workTime <= 0) return;
 
@@ -257,6 +274,9 @@ export class Simulator {
     this.fel.push(createEvent(this.nextWorkTime, EventType.SERVER_BREAK_END, {}));
   }
 
+  /**
+   * Obtiene el próximo evento de la FEL (el que tiene menor tiempo).
+   */
   #getNextEvent() {
     if (this.fel.length === 0) return null;
     return this.fel.reduce((min, e) =>
@@ -272,10 +292,12 @@ export class Simulator {
     this.clock = newTime;
   }
 
+  /**
+   * Gestiona el abandono de un cliente que se cansó de esperar en la cola.
+   */
   #handleAbandonment(event) {
     const { clientId } = event.data;
 
-    // Buscar en vipQueue primero, luego en queue
     let clientIndex = this.vipQueue.findIndex(c => c.id === clientId);
     if (clientIndex !== -1) {
       const client = this.vipQueue[clientIndex];
@@ -294,6 +316,9 @@ export class Simulator {
     }
   }
 
+  /**
+   * El cliente entra a la Zona de Seguridad.
+   */
   #handleEnterSZ() {
     this.szBusy = true;
     const travelTime = this.generators.travel.next();
@@ -301,12 +326,14 @@ export class Simulator {
     this.#recordHistory(EventType.ENTER_SZ, `C${this.clientInService?.id || '?'} entra a Zona de Seguridad`);
   }
 
+  /**
+   * El cliente llega al Punto de Servicio después de cruzar la Zona de Seguridad.
+   */
   #handleArrivalPS() {
     this.szBusy = false;
     const clientId = this.clientInService?.id;
     this.#recordHistory(EventType.ARRIVAL_PS, `C${clientId} llega al Punto de Servicio`);
 
-    // Seleccionar próximo cliente de la cola (respetando prioridades)
     let nextClient = null;
     if (this.flags.hasPriority) {
       nextClient = this.vipQueue.shift() || this.queue.shift();
@@ -315,11 +342,9 @@ export class Simulator {
     }
 
     if (nextClient) {
-      // El cliente que estaba en servicio (ahora cruzó SZ) fue atendido
       this.stats.clientsServed++;
-      this._serviceTimeHistory.push(this.generators.service.next()); // Ya se incluía en el travel
+      this._serviceTimeHistory.push(this.generators.service.next());
 
-      // El siguiente cliente entra a servicio
       this.clientInService = nextClient;
       this.serverState = ServerState.BUSY;
       
@@ -328,37 +353,30 @@ export class Simulator {
       this.fel.push(createEvent(this.serviceEndTime, EventType.SERVICE_END, { clientId: nextClient.id }));
       this.#recordHistory(EventType.SERVICE_END, `C${nextClient.id} entra en servicio (ΔtS=${serviceTime.toFixed(1)})`);
       
-      // Programar siguiente llegada
       this.#scheduleNextArrival();
     } else {
-      // No hay más clientes en cola
       this.stats.clientsServed++;
       this.serverState = ServerState.IDLE;
       this.clientInService = null;
       this.serviceEndTime = null;
-      
-      // Programar siguiente llegada
       this.#scheduleNextArrival();
     }
   }
 
+  /**
+   * Gestiona la llegada de un nuevo cliente al sistema.
+   */
   #handleArrival(isVip = false) {
-    // Modo Zona de Seguridad
     if (this.flags.hasSecurityZone) {
-      // Crear cliente
       const client = createClient(this.clock, this.config, this.flags, isVip);
       
-      // Si SZ libre y PS libre, entrar inmediatamente a SZ
       if (!this.szBusy && this.serverState === ServerState.IDLE) {
         this.clientInService = client;
         this.serverState = ServerState.BUSY;
         this.szBusy = true;
-        
-        // Programar entrada a SZ (mismo instante)
         this.fel.push(createEvent(this.clock, EventType.ENTER_SZ, { clientId: client.id }));
         this.#recordHistory(EventType.ARRIVAL, `C${client.id} llega -> entra a ZS`);
       } else {
-        // Algo ocupado, encolar
         if (isVip || this.flags.hasPriority) {
           this.vipQueue.push(client);
         } else {
@@ -367,12 +385,10 @@ export class Simulator {
         this.#recordHistory(EventType.ARRIVAL, `C${client.id} llega -> cola (ZS ocupa)`);
       }
       
-      // Programar siguiente llegada
       this.#scheduleNextArrival(isVip);
       return;
     }
 
-    // Modo normal (sin Zona de Seguridad)
     if (!this.serverPresent) {
       const client = createClient(this.clock, this.config, this.flags, isVip);
       if (isVip) {
@@ -404,7 +420,6 @@ export class Simulator {
       }
       action = `C${client.id}${isVip ? ' (VIP)' : ''} entra a ${isVip ? 'cola VIP' : 'cola'}`;
 
-      // Programar evento de abandono específico para este cliente
       if (this.flags.hasClientAbandonment && client.patienceTime < Infinity) {
         const abandonEvent = createEvent(
           this.clock + client.patienceTime,
@@ -419,6 +434,9 @@ export class Simulator {
     this.#recordHistory(isVip ? EventType.ARRIVAL_VIP : EventType.ARRIVAL, action);
   }
 
+  /**
+   * Programa la llegada del próximo cliente basándose en el intervalo de llegada.
+   */
   #scheduleNextArrival(isVip = false) {
     const arrivalType = isVip ? EventType.ARRIVAL_VIP : EventType.ARRIVAL;
     if (!this.fel.some(e => e.type === arrivalType)) {
@@ -429,13 +447,15 @@ export class Simulator {
     }
   }
 
+  /**
+   * Gestiona el fin del servicio de un cliente.
+   */
   #handleServiceEnd(event) {
     this.stats.clientsServed++;
     const servedClientId = event.data.clientId;
     const wasVip = this.clientInService?.priority === ClientPriority.VIP;
     let action = `C${servedClientId}${wasVip ? ' (VIP)' : ''} atendido`;
 
-    // Guardar tiempo de servicio para estadísticas
     if (this.clientInService) {
       this._serviceTimeHistory.push(event.time - this.clock);
     }
@@ -461,6 +481,9 @@ export class Simulator {
     this.#recordHistory(EventType.SERVICE_END, action);
   }
 
+  /**
+   * Selecciona al siguiente cliente de las colas, priorizando VIP.
+   */
   #selectNextClient() {
     if (this.vipQueue.length > 0) {
       this.clientInService = this.vipQueue.shift();
@@ -471,6 +494,9 @@ export class Simulator {
     }
   }
 
+  /**
+   * Gestiona el inicio de un descanso del servidor.
+   */
   #handleServerBreakStart() {
     this.nextBreakTime = null;
     this.stats.workCycles++;
@@ -478,11 +504,10 @@ export class Simulator {
     if (this.serverState === ServerState.BUSY) {
       this.serverPresent = false;
       this.pausedServiceRemaining = this.serviceEndTime - this.clock;
-      this.pausedClient = this.clientInService; // Guardar cliente que estaba en servicio
+      this.pausedClient = this.clientInService;
       const tempClientId = this.clientInService ? this.clientInService.id : null;
       const wasVip = this.clientInService?.priority === ClientPriority.VIP;
       
-      // Eliminar el evento SERVICE_END fantasma de la FEL
       this.fel = this.fel.filter(e => e.type !== EventType.SERVICE_END);
       
       this.serverState = ServerState.BREAK;
@@ -499,6 +524,9 @@ export class Simulator {
     this.#recordHistory(EventType.SERVER_BREAK_START, `Servidor sale (IDLE)`);
   }
 
+  /**
+   * Gestiona el regreso del servidor de un descanso.
+   */
   #handleServerBreakEnd() {
     this.nextWorkTime = null;
     this.stats.restCycles++;
@@ -507,9 +535,8 @@ export class Simulator {
       this.serverPresent = true;
 
       if (this.pausedServiceRemaining !== null && this.pausedServiceRemaining > 0) {
-        // Restaurar el servicio que estaba en pausa
         this.serverState = ServerState.BUSY;
-        this.clientInService = this.pausedClient; // Restaurar cliente
+        this.clientInService = this.pausedClient;
         this.serviceEndTime = this.clock + this.pausedServiceRemaining;
         this.pausedServiceRemaining = null;
         this.pausedClient = null;
@@ -517,7 +544,6 @@ export class Simulator {
         this.#scheduleWorkCycle();
         this.#recordHistory(EventType.SERVER_BREAK_END, `Servidor regresa -> C${this.clientInService.id}${this.clientInService.priority === ClientPriority.VIP ? ' (VIP)' : ''} continúa servicio`);
       } else if (this.vipQueue.length > 0 || this.queue.length > 0) {
-        // No había servicio pausado, atender nuevo cliente de la cola
         this.serverState = ServerState.BUSY;
         this.#selectNextClient();
         const serviceTime = this.generators.service.next();
@@ -539,6 +565,9 @@ export class Simulator {
     return this.vipQueue.length + this.queue.length;
   }
 
+  /**
+   * Registra una fila en el historial de la simulación.
+   */
   #recordHistory(eventType, action) {
     const nextBreak = this.fel.find(e => e.type === EventType.SERVER_BREAK_START);
     const nextWork = this.fel.find(e => e.type === EventType.SERVER_BREAK_END);
@@ -562,6 +591,9 @@ export class Simulator {
     });
   }
 
+  /**
+   * Avanza un paso en la simulación procesando el siguiente evento.
+   */
   step() {
     const event = this.#getNextEvent();
     if (!event) return false;
@@ -602,12 +634,18 @@ export class Simulator {
     return true;
   }
 
+  /**
+   * Ejecuta la simulación hasta el final (hasta agotar eventos o tiempo máximo).
+   */
   run() {
     // eslint-disable-next-line no-empty
     while (this.step()) { }
     return this.getResults();
   }
 
+  /**
+   * Calcula y retorna los resultados finales y estadísticas.
+   */
   getResults() {
     const totalTime = this.clock - this.config.startTime;
     const avgServiceTime = this._serviceTimeHistory.length > 0
@@ -627,6 +665,9 @@ export class Simulator {
     };
   }
 
+  /**
+   * Obtiene una instantánea del estado actual de la simulación.
+   */
   getCurrentState() {
     return {
       clock: this.clock,
@@ -658,6 +699,9 @@ export class Simulator {
   }
 }
 
+/**
+ * Utilidad para formatear segundos en formato HH:MM:SS o MM:SS.
+ */
 export function formatTime(seconds, startTime = 0) {
   const absoluteTime = startTime + seconds;
   const totalSecs = Math.floor(absoluteTime);
