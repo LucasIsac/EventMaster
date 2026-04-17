@@ -58,6 +58,22 @@ export class ExponentialGenerator extends Generator {
 }
 
 /**
+ * Genera valores con distribución uniforme en un rango.
+ * Uso: new UniformGenerator(10, 20) → valores aleatorios entre 10 y 20
+ */
+export class UniformGenerator extends Generator {
+  constructor(min = 0, max = 0) {
+    super();
+    this.min = min;
+    this.max = max;
+  }
+  next() {
+    return this.min + Math.random() * (this.max - this.min);
+  }
+  getDesc() { return `(uniforme: ${this.min} - ${this.max})`; }
+}
+
+/**
  * Factory para crear generadores desde un string de tipo.
  * type: 'constant' | 'list' | 'exponential'
  * value: número para constant/exponential, array para list

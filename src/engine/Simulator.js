@@ -1,4 +1,4 @@
-import { ConstantGenerator, ListGenerator } from '../utils/generators.js';
+import { ConstantGenerator, ListGenerator, UniformGenerator, ExponentialGenerator } from '../utils/generators.js';
 
 export const ServerState = {
   IDLE: 'LIBRE',
@@ -63,23 +63,74 @@ export class Simulator {
     this.config = { ...config };
     this.flags = { ...flags };
 
-    // Generators: detectar si es lista o constante
-    const createArrivalGen = () => {
-      const val = this.config.arrivalInterval;
-      if (typeof val === 'string' && val.includes(',')) {
-        const arr = val.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
-        return arr.length > 0 ? new ListGenerator(arr) : new ConstantGenerator(0);
+    // Helper to parse value and detect type
+    const parseInputValue = (value, distType = 'uniform') => {
+      if (typeof value !== 'string') {
+        return { mode: 'constant', value: Number(value) || 0 };
       }
-      return new ConstantGenerator(Number(val) || 0);
+      
+      const trimmed = value.trim();
+      
+      // Lista: contiene coma
+      if (trimmed.includes(',')) {
+        const arr = trimmed.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
+        if (arr.length > 0) {
+          return { mode: 'list', values: arr };
+        }
+      }
+      
+      // Rango: contiene guion (como "10-20" o "10 - 20")
+      if (trimmed.includes('-')) {
+        const parts = trimmed.split('-').map(v => parseFloat(v.trim()));
+        const min = parts[0];
+        const max = parts[1];
+        if (!isNaN(min) && !isNaN(max) && max > min) {
+          if (distType === 'exponential') {
+            // Exponencial: usar promedio como media
+            const mean = (min + max) / 2;
+            return { mode: 'exponential', value: mean };
+          }
+          return { mode: 'uniform', min, max };
+        }
+      }
+      
+      // Constante: número simple
+      const num = Number(trimmed);
+      if (!isNaN(num)) {
+        return { mode: 'constant', value: num };
+      }
+      
+      return { mode: 'constant', value: 0 }; // Fallback
     };
-    
-    const createServiceGen = () => {
-      const val = this.config.serviceTime;
-      if (typeof val === 'string' && val.includes(',')) {
-        const arr = val.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
-        return arr.length > 0 ? new ListGenerator(arr) : new ConstantGenerator(0);
+
+    // Factory para arrival
+    const createArrivalGen = () => {
+      const parsed = parseInputValue(this.config.arrivalInterval, this.config.arrivalDistType || 'uniform');
+      switch (parsed.mode) {
+        case 'list':
+          return new ListGenerator(parsed.values);
+        case 'uniform':
+          return new UniformGenerator(parsed.min, parsed.max);
+        case 'exponential':
+          return new ExponentialGenerator(parsed.value);
+        default:
+          return new ConstantGenerator(parsed.value);
       }
-      return new ConstantGenerator(Number(val) || 0);
+    };
+
+    // Factory para service
+    const createServiceGen = () => {
+      const parsed = parseInputValue(this.config.serviceTime, this.config.serviceDistType || 'uniform');
+      switch (parsed.mode) {
+        case 'list':
+          return new ListGenerator(parsed.values);
+        case 'uniform':
+          return new UniformGenerator(parsed.min, parsed.max);
+        case 'exponential':
+          return new ExponentialGenerator(parsed.value);
+        default:
+          return new ConstantGenerator(parsed.value);
+      }
     };
 
     this.generators = {
