@@ -484,7 +484,44 @@ kbd {
 .advanced-table .th-time { width: 90px; min-width: 90px; }
 .advanced-table .th-fel { background: #0d9488; }
 .advanced-table .th-special { background: #7c3aed; }
-.advanced-table .th-client { background: #a855f7; min-width: 60px; }
+.advanced-table .th-client { background: #a855f7; min-width: 40px; max-width: 50px; }
+
+/* Columnas de abandono condensadas */
+.advanced-table .td-client {
+  background: #faf5ff;
+  text-align: center;
+  min-width: 40px;
+  max-width: 50px;
+  font-size: 0.7rem;
+  padding: 4px 2px;
+}
+
+.advanced-table .th-special {
+  position: relative;
+}
+
+.advanced-table .more-indicator {
+  display: inline-block;
+  margin-left: 4px;
+  background: #ef4444;
+  color: white;
+  font-size: 0.6rem;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+/* Asegurar que las columnas principales no se compriman */
+.advanced-table .th-fel,
+.advanced-table .td-fel {
+  min-width: 80px;
+}
+
+.advanced-table .td-num,
+.advanced-table .th-num {
+  min-width: 40px;
+  max-width: 50px;
+}
 
 .advanced-table .row-even { background: #f8fafc; }
 .advanced-table .row-odd { background: white; }

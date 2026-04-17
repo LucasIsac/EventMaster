@@ -1,3 +1,5 @@
+import { ConstantGenerator, ListGenerator } from '../utils/generators.js';
+
 export const ServerState = {
   IDLE: 'LIBRE',
   BUSY: 'OCUPADO',
@@ -15,7 +17,9 @@ export const EventType = {
   SERVICE_END: 'FIN_SERVICIO',
   SERVER_BREAK_START: 'SALIDA_SERVIDOR',
   SERVER_BREAK_END: 'LLEGADA_SERVIDOR',
-  ABANDONMENT: 'ABANDONO'
+  ABANDONMENT: 'ABANDONO',
+  ENTER_SZ: 'ENTER_SZ',
+  ARRIVAL_PS: 'LLEGADA_PS'
 };
 
 let clientIdCounter = 0;
@@ -24,44 +28,6 @@ let eventIdCounter = 0;
 export function resetCounters() {
   clientIdCounter = 0;
   eventIdCounter = 0;
-}
-
-function parseArrayInput(value) {
-  if (typeof value === 'number') return [value];
-  if (typeof value === 'string') {
-    if (value.includes('-') && !value.includes(',')) {
-      const [min, max] = value.split('-').map(v => parseFloat(v.trim()));
-      if (!isNaN(min) && !isNaN(max)) {
-        return { min, max, isRange: true };
-      }
-    }
-    if (value.includes(',')) {
-      const parsed = value.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
-      return parsed.length > 0 ? parsed : [0];
-    }
-    const num = parseFloat(value);
-    return isNaN(num) ? [0] : [num];
-  }
-  return [0];
-}
-
-function getNextValue(arrayObj, indexRef) {
-  if (!arrayObj) return 0;
-  
-  if (arrayObj.isRange) {
-    return arrayObj.min + Math.random() * (arrayObj.max - arrayObj.min);
-  }
-  
-  if (arrayObj.length === 0) return 0;
-  
-  if (indexRef.current >= arrayObj.length) {
-    return arrayObj[arrayObj.length - 1];
-  }
-  return arrayObj[indexRef.current++];
-}
-
-function resetIndex(indexRef) {
-  indexRef.current = 0;
 }
 
 function createClient(arrivalTime, config, flags, isVip = false) {
@@ -93,17 +59,40 @@ function createEvent(time, type, data = {}) {
 }
 
 export class Simulator {
-  constructor(config, flags, initialState = {}) {
+  constructor(config, flags, initialState = {}, generators = {}) {
     this.config = { ...config };
     this.flags = { ...flags };
-    this.initialState = initialState;
 
-    this.arrivalTimes = parseArrayInput(config.arrivalInterval);
-    this.vipArrivalTimes = parseArrayInput(config.vipArrivalInterval);
-    this.serviceTimes = parseArrayInput(config.serviceTime);
-    this.indexArrival = { current: 0 };
-    this.indexVipArrival = { current: 0 };
-    this.indexService = { current: 0 };
+    // Generators: detectar si es lista o constante
+    const createArrivalGen = () => {
+      const val = this.config.arrivalInterval;
+      if (typeof val === 'string' && val.includes(',')) {
+        const arr = val.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
+        return arr.length > 0 ? new ListGenerator(arr) : new ConstantGenerator(0);
+      }
+      return new ConstantGenerator(Number(val) || 0);
+    };
+    
+    const createServiceGen = () => {
+      const val = this.config.serviceTime;
+      if (typeof val === 'string' && val.includes(',')) {
+        const arr = val.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
+        return arr.length > 0 ? new ListGenerator(arr) : new ConstantGenerator(0);
+      }
+      return new ConstantGenerator(Number(val) || 0);
+    };
+
+    this.generators = {
+      arrival: generators.arrival || createArrivalGen(),
+      service: generators.service || createServiceGen(),
+      breakDuration: generators.breakDuration || new ConstantGenerator(Number(this.config.restTime) || 0),
+      travel: generators.travel || new ConstantGenerator(Number(this.config.travelTime) || 0),
+    };
+
+    // Historial de tiempos de servicio para estadísticas
+    this._serviceTimeHistory = [];
+
+    this.initialState = initialState;
 
     this.workTime = config.workTime || 0;
     this.restTime = config.restTime || 0;
@@ -118,6 +107,7 @@ export class Simulator {
     this.serviceEndTime = null;
     this.nextBreakTime = null;
     this.nextWorkTime = null;
+    this.szBusy = false; // Zona de Seguridad
 
     this.stats = {
       clientsServed: 0,
@@ -130,8 +120,10 @@ export class Simulator {
 
     this.history = [];
     this.pausedServiceRemaining = null;
+    this.pausedClient = null;
     this.firstArrivalScheduled = false;
     this.firstVipArrivalScheduled = false;
+    this._serviceTimeHistory = [];
 
     this.#initialize();
   }
@@ -170,12 +162,11 @@ export class Simulator {
     if (this.flags.hasPriority) {
       if (!this.firstVipArrivalScheduled) {
         this.firstVipArrivalScheduled = true;
-        let firstVipArrival = this.clock + getNextValue(this.vipArrivalTimes, this.indexVipArrival);
+        let firstVipArrival = this.clock + this.generators.arrival.next();
         if (serverBusy && busyUntil) {
           const busyUntilAbs = this.config.startTime + busyUntil;
           if (firstVipArrival < busyUntilAbs) {
-            resetIndex(this.indexVipArrival);
-            firstVipArrival = busyUntilAbs + getNextValue(this.vipArrivalTimes, this.indexVipArrival);
+            firstVipArrival = busyUntilAbs + this.generators.arrival.next();
           }
         }
         if (firstVipArrival <= this.config.startTime + this.config.maxTime) {
@@ -186,12 +177,11 @@ export class Simulator {
 
     if (!this.firstArrivalScheduled) {
       this.firstArrivalScheduled = true;
-      let firstArrivalTime = this.clock + getNextValue(this.arrivalTimes, this.indexArrival);
+      let firstArrivalTime = this.clock + this.generators.arrival.next();
       if (serverBusy && busyUntil) {
         const busyUntilAbs = this.config.startTime + busyUntil;
         if (firstArrivalTime < busyUntilAbs) {
-          resetIndex(this.indexArrival);
-          firstArrivalTime = busyUntilAbs + getNextValue(this.arrivalTimes, this.indexArrival);
+          firstArrivalTime = busyUntilAbs + this.generators.arrival.next();
         }
       }
       if (firstArrivalTime <= this.config.startTime + this.config.maxTime) {
@@ -212,7 +202,7 @@ export class Simulator {
   #scheduleNextWorkPeriod() {
     if (!this.flags.hasServerBreaks || this.workTime <= 0) return;
 
-    this.nextWorkTime = this.clock + this.restTime;
+    this.nextWorkTime = this.clock + this.generators.breakDuration.next();
     this.fel.push(createEvent(this.nextWorkTime, EventType.SERVER_BREAK_END, {}));
   }
 
@@ -228,40 +218,110 @@ export class Simulator {
   }
 
   #advanceClock(newTime) {
-    if (this.flags.hasClientAbandonment && newTime > this.clock && this.serverPresent) {
-      this.#checkAbandonments(newTime);
-    }
     this.clock = newTime;
   }
 
-  #checkAbandonments(currentTime) {
-    const checkQueue = (queue) => {
-      const clientsToRemove = [];
-      for (const client of queue) {
-        const waitTime = currentTime - client.arrivalTime;
-        if (waitTime > client.patienceTime) {
-          clientsToRemove.push(client);
-        }
-      }
-      return clientsToRemove;
-    };
+  #handleAbandonment(event) {
+    const { clientId } = event.data;
 
-    const vipToRemove = checkQueue(this.vipQueue);
-    const commonToRemove = checkQueue(this.queue);
-
-    for (const client of vipToRemove) {
-      this.vipQueue = this.vipQueue.filter(c => c.id !== client.id);
+    // Buscar en vipQueue primero, luego en queue
+    let clientIndex = this.vipQueue.findIndex(c => c.id === clientId);
+    if (clientIndex !== -1) {
+      const client = this.vipQueue[clientIndex];
+      this.vipQueue.splice(clientIndex, 1);
       this.stats.clientsAbandoned++;
       this.#recordHistory(EventType.ABANDONMENT, `C${client.id} (VIP) abandona`);
+      return;
     }
-    for (const client of commonToRemove) {
-      this.queue = this.queue.filter(c => c.id !== client.id);
+
+    clientIndex = this.queue.findIndex(c => c.id === clientId);
+    if (clientIndex !== -1) {
+      const client = this.queue[clientIndex];
+      this.queue.splice(clientIndex, 1);
       this.stats.clientsAbandoned++;
       this.#recordHistory(EventType.ABANDONMENT, `C${client.id} abandona`);
     }
   }
 
+  #handleEnterSZ() {
+    this.szBusy = true;
+    const travelTime = this.generators.travel.next();
+    this.fel.push(createEvent(this.clock + travelTime, EventType.ARRIVAL_PS, {}));
+    this.#recordHistory(EventType.ENTER_SZ, `C${this.clientInService?.id || '?'} entra a Zona de Seguridad`);
+  }
+
+  #handleArrivalPS() {
+    this.szBusy = false;
+    const clientId = this.clientInService?.id;
+    this.#recordHistory(EventType.ARRIVAL_PS, `C${clientId} llega al Punto de Servicio`);
+
+    // Seleccionar próximo cliente de la cola (respetando prioridades)
+    let nextClient = null;
+    if (this.flags.hasPriority) {
+      nextClient = this.vipQueue.shift() || this.queue.shift();
+    } else {
+      nextClient = this.queue.shift();
+    }
+
+    if (nextClient) {
+      // El cliente que estaba en servicio (ahora cruzó SZ) fue atendido
+      this.stats.clientsServed++;
+      this._serviceTimeHistory.push(this.generators.service.next()); // Ya se incluía en el travel
+
+      // El siguiente cliente entra a servicio
+      this.clientInService = nextClient;
+      this.serverState = ServerState.BUSY;
+      
+      const serviceTime = this.generators.service.next();
+      this.serviceEndTime = this.clock + serviceTime;
+      this.fel.push(createEvent(this.serviceEndTime, EventType.SERVICE_END, { clientId: nextClient.id }));
+      this.#recordHistory(EventType.SERVICE_END, `C${nextClient.id} entra en servicio (ΔtS=${serviceTime.toFixed(1)})`);
+      
+      // Programar siguiente llegada
+      this.#scheduleNextArrival();
+    } else {
+      // No hay más clientes en cola
+      this.stats.clientsServed++;
+      this.serverState = ServerState.IDLE;
+      this.clientInService = null;
+      this.serviceEndTime = null;
+      
+      // Programar siguiente llegada
+      this.#scheduleNextArrival();
+    }
+  }
+
   #handleArrival(isVip = false) {
+    // Modo Zona de Seguridad
+    if (this.flags.hasSecurityZone) {
+      // Crear cliente
+      const client = createClient(this.clock, this.config, this.flags, isVip);
+      
+      // Si SZ libre y PS libre, entrar inmediatamente a SZ
+      if (!this.szBusy && this.serverState === ServerState.IDLE) {
+        this.clientInService = client;
+        this.serverState = ServerState.BUSY;
+        this.szBusy = true;
+        
+        // Programar entrada a SZ (mismo instante)
+        this.fel.push(createEvent(this.clock, EventType.ENTER_SZ, { clientId: client.id }));
+        this.#recordHistory(EventType.ARRIVAL, `C${client.id} llega -> entra a ZS`);
+      } else {
+        // Algo ocupado, encolar
+        if (isVip || this.flags.hasPriority) {
+          this.vipQueue.push(client);
+        } else {
+          this.queue.push(client);
+        }
+        this.#recordHistory(EventType.ARRIVAL, `C${client.id} llega -> cola (ZS ocupa)`);
+      }
+      
+      // Programar siguiente llegada
+      this.#scheduleNextArrival(isVip);
+      return;
+    }
+
+    // Modo normal (sin Zona de Seguridad)
     if (!this.serverPresent) {
       const client = createClient(this.clock, this.config, this.flags, isVip);
       if (isVip) {
@@ -281,7 +341,7 @@ export class Simulator {
     if (this.serverState === ServerState.IDLE) {
       this.serverState = ServerState.BUSY;
       this.clientInService = client;
-      const serviceTime = getNextValue(this.serviceTimes, this.indexService);
+      const serviceTime = this.generators.service.next();
       this.serviceEndTime = this.clock + serviceTime;
       this.fel.push(createEvent(this.serviceEndTime, EventType.SERVICE_END, { clientId: client.id }));
       action = `C${client.id}${isVip ? ' (VIP)' : ''} entra en servicio (ΔtS=${serviceTime.toFixed(1)})`;
@@ -292,6 +352,16 @@ export class Simulator {
         this.queue.push(client);
       }
       action = `C${client.id}${isVip ? ' (VIP)' : ''} entra a ${isVip ? 'cola VIP' : 'cola'}`;
+
+      // Programar evento de abandono específico para este cliente
+      if (this.flags.hasClientAbandonment && client.patienceTime < Infinity) {
+        const abandonEvent = createEvent(
+          this.clock + client.patienceTime,
+          EventType.ABANDONMENT,
+          { clientId: client.id }
+        );
+        this.fel.push(abandonEvent);
+      }
     }
 
     this.#scheduleNextArrival(isVip);
@@ -301,10 +371,7 @@ export class Simulator {
   #scheduleNextArrival(isVip = false) {
     const arrivalType = isVip ? EventType.ARRIVAL_VIP : EventType.ARRIVAL;
     if (!this.fel.some(e => e.type === arrivalType)) {
-      const nextArrival = this.clock + getNextValue(
-        isVip ? this.vipArrivalTimes : this.arrivalTimes,
-        isVip ? this.indexVipArrival : this.indexArrival
-      );
+      const nextArrival = this.clock + this.generators.arrival.next();
       if (nextArrival <= this.config.startTime + this.config.maxTime) {
         this.fel.push(createEvent(nextArrival, arrivalType, {}));
       }
@@ -317,11 +384,16 @@ export class Simulator {
     const wasVip = this.clientInService?.priority === ClientPriority.VIP;
     let action = `C${servedClientId}${wasVip ? ' (VIP)' : ''} atendido`;
 
+    // Guardar tiempo de servicio para estadísticas
+    if (this.clientInService) {
+      this._serviceTimeHistory.push(event.time - this.clock);
+    }
+
     if (this.serverState === ServerState.BUSY && this.serverPresent) {
       this.#selectNextClient();
       
       if (this.clientInService) {
-        const serviceTime = getNextValue(this.serviceTimes, this.indexService);
+        const serviceTime = this.generators.service.next();
         this.serviceEndTime = this.clock + serviceTime;
         this.fel.push(createEvent(this.serviceEndTime, EventType.SERVICE_END, { clientId: this.clientInService.id }));
         action += ` -> C${this.clientInService.id}${this.clientInService.priority === ClientPriority.VIP ? ' (VIP)' : ''} en servicio (ΔtS=${serviceTime.toFixed(1)})`;
@@ -355,8 +427,13 @@ export class Simulator {
     if (this.serverState === ServerState.BUSY) {
       this.serverPresent = false;
       this.pausedServiceRemaining = this.serviceEndTime - this.clock;
+      this.pausedClient = this.clientInService; // Guardar cliente que estaba en servicio
       const tempClientId = this.clientInService ? this.clientInService.id : null;
       const wasVip = this.clientInService?.priority === ClientPriority.VIP;
+      
+      // Eliminar el evento SERVICE_END fantasma de la FEL
+      this.fel = this.fel.filter(e => e.type !== EventType.SERVICE_END);
+      
       this.serverState = ServerState.BREAK;
       this.clientInService = null;
       this.serviceEndTime = null;
@@ -378,20 +455,29 @@ export class Simulator {
     if (this.serverState === ServerState.BREAK) {
       this.serverPresent = true;
 
-      if (this.vipQueue.length > 0 || this.queue.length > 0) {
+      if (this.pausedServiceRemaining !== null && this.pausedServiceRemaining > 0) {
+        // Restaurar el servicio que estaba en pausa
+        this.serverState = ServerState.BUSY;
+        this.clientInService = this.pausedClient; // Restaurar cliente
+        this.serviceEndTime = this.clock + this.pausedServiceRemaining;
+        this.pausedServiceRemaining = null;
+        this.pausedClient = null;
+        this.fel.push(createEvent(this.serviceEndTime, EventType.SERVICE_END, { clientId: this.clientInService.id }));
+        this.#scheduleWorkCycle();
+        this.#recordHistory(EventType.SERVER_BREAK_END, `Servidor regresa -> C${this.clientInService.id}${this.clientInService.priority === ClientPriority.VIP ? ' (VIP)' : ''} continúa servicio`);
+      } else if (this.vipQueue.length > 0 || this.queue.length > 0) {
+        // No había servicio pausado, atender nuevo cliente de la cola
         this.serverState = ServerState.BUSY;
         this.#selectNextClient();
-        const serviceTime = this.pausedServiceRemaining
-          ? this.pausedServiceRemaining
-          : getNextValue(this.serviceTimes, this.indexService);
+        const serviceTime = this.generators.service.next();
         this.serviceEndTime = this.clock + serviceTime;
-        this.pausedServiceRemaining = null;
         this.fel.push(createEvent(this.serviceEndTime, EventType.SERVICE_END, { clientId: this.clientInService.id }));
         this.#scheduleWorkCycle();
         this.#recordHistory(EventType.SERVER_BREAK_END, `Servidor regresa -> C${this.clientInService.id}${this.clientInService.priority === ClientPriority.VIP ? ' (VIP)' : ''} en servicio`);
       } else {
         this.serverState = ServerState.IDLE;
         this.pausedServiceRemaining = null;
+        this.pausedClient = null;
         this.#scheduleWorkCycle();
         this.#recordHistory(EventType.SERVER_BREAK_END, `Servidor regresa (IDLE)`);
       }
@@ -451,6 +537,15 @@ export class Simulator {
       case EventType.SERVER_BREAK_END:
         this.#handleServerBreakEnd();
         break;
+      case EventType.ABANDONMENT:
+        this.#handleAbandonment(event);
+        break;
+      case EventType.ENTER_SZ:
+        this.#handleEnterSZ();
+        break;
+      case EventType.ARRIVAL_PS:
+        this.#handleArrivalPS();
+        break;
     }
 
     return true;
@@ -464,8 +559,8 @@ export class Simulator {
 
   getResults() {
     const totalTime = this.clock - this.config.startTime;
-    const avgServiceTime = this.stats.clientsServed > 0
-      ? (this.serviceTimes.slice(0, this.stats.clientsServed).reduce((a, b) => a + b, 0) / this.stats.clientsServed)
+    const avgServiceTime = this._serviceTimeHistory.length > 0
+      ? (this._serviceTimeHistory.reduce((a, b) => a + b, 0) / this._serviceTimeHistory.length)
       : 0;
     const busyTime = this.stats.clientsServed * avgServiceTime;
     const utilization = totalTime > 0 ? (busyTime / totalTime * 100) : 0;

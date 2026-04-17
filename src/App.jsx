@@ -433,10 +433,12 @@ function AdvancedTable({ history, flags }) {
 
   const getMaxQueueSize = () => {
     if (!history.length) return 3;
-    return Math.max(3, ...history.map(h => h.queueLength));
+    const maxInHistory = Math.max(3, ...history.map(h => h.queueLength));
+    return Math.min(maxInHistory, 4); // Limitar a 4 columnas máximo
   };
 
   const maxQueue = getMaxQueueSize();
+  const hasMoreClients = history.length > 0 && Math.max(...history.map(h => h.queueLength)) > maxQueue;
 
   return (
     <div className="table-wrapper">
@@ -457,6 +459,7 @@ function AdvancedTable({ history, flags }) {
             {flags.hasClientAbandonment && (
               <th colSpan={1 + maxQueue} className="th-special">
                 Abandono de Clientes
+                {hasMoreClients && <span className="more-indicator">+</span>}
               </th>
             )}
           </tr>

@@ -112,7 +112,9 @@ export const EventType = {
   SERVICE_END: 'FIN_SERVICIO',
   SERVER_BREAK_START: 'SALIDA_SERVIDOR',
   SERVER_BREAK_END: 'LLEGADA_SERVIDOR',
-  ABANDONMENT: 'ABANDONO'
+  ABANDONMENT: 'ABANDONO',
+  ENTER_SZ: 'ENTER_SZ',      // Zona de Seguridad: cliente entra a la zona
+  ARRIVAL_PS: 'LLEGADA_PS'   // Zona de Seguridad: cliente llega al punto de servicio
 };
 ```
 
@@ -190,17 +192,18 @@ constructor(config, flags, initialState = {})
 **Configuración (config):**
 - `maxTime`: Duración total de simulación en segundos
 - `startTime`: Hora de inicio en formato absoluto (ej: 28800 = 08:00:00)
-- `arrivalInterval`: Intervalo entre llegadas (puede ser número, lista "10,20,30", o rango "10-20")
+- `arrivalInterval`: Intervalo entre llegadas (número, lista "10,20,30", o constante)
 - `serviceTime`: Tiempo de servicio por cliente
 - `workTime`: Duración del período de trabajo (para ciclos)
 - `restTime`: Duración del período de descanso
-- `maxWaitTime`: Tiempo máximo de espera antes de abandono
-- `vipArrivalInterval`: Intervalo entre llegadas VIP (opcional)
+- `maxWaitTime`: Tiempo máximo de espera antes de abandono (puede ser Infinity)
+- `travelTime`: Tiempo de cruce de la Zona de Seguridad
 
 **Flags:**
 - `hasPriority`: Habilitar clientes VIP (30% de probabilidad)
 - `hasClientAbandonment`: Habilitar abandonos por timeout
 - `hasServerBreaks`: Habilitar ciclos de trabajo/descanso
+- `hasSecurityZone`: Habilitar modelo de Zona de Seguridad (SZ + PS)
 
 **InitialState:**
 - `clientsInQueue`: Clientes iniciales en cola común
@@ -215,16 +218,19 @@ constructor(config, flags, initialState = {})
 | `#initialize()` | Configura estado inicial, cola, eventos programados |
 | `#scheduleFirstArrivals()` | Programa las primeras llegadas |
 | `#scheduleWorkCycle()` | Programa el ciclo de trabajo/descanso |
+| `#scheduleNextWorkPeriod()` | Programa el fin del descanso |
 | `#getNextEvent()` | Devuelve el evento con menor tiempo de la FEL |
 | `#removeEvent()` | Elimina un evento de la FEL |
-| `#advanceClock()` | Avanza el reloj y verifica abandonos |
-| `#checkAbandonments()` | Verifica clientes que excedieron su tiempo de espera |
+| `#advanceClock()` | Avanza el reloj |
+| `#handleAbandonment()` | Procesa abandono de cliente específico |
 | `#handleArrival()` | Procesa llegada de cliente (normal o VIP) |
 | `#scheduleNextArrival()` | Programa la siguiente llegada |
 | `#handleServiceEnd()` | Procesa fin de servicio |
 | `#selectNextClient()` | Selecciona siguiente cliente (VIP primero si aplica) |
-| `#handleServerBreakStart()` | Inicia período de descanso del servidor |
-| `#handleServerBreakEnd()` | Finaliza período de descanso |
+| `#handleServerBreakStart()` | Inicia período de descanso (elimina evento SERVICE_END fantasma) |
+| `#handleServerBreakEnd()` | Finaliza descanso ( restaura cliente si había servicio pausado) |
+| `#handleEnterSZ()` | Zona de Seguridad: cliente entra a la zona |
+| `#handleArrivalPS()` | Zona de Seguridad: cliente llega al punto de servicio |
 | `#getTotalQueue()` | Devuelve tamaño total de cola |
 | `#recordHistory()` | Registra estado actual en historial |
 
@@ -554,3 +560,47 @@ generator(); // returns random between 30-60
 const label = getModeLabel(parsed);
 // { text: 'Rango: 30 - 60', type: 'range' }
 ```
+
+---
+
+## 15. Changelog - Actualizaciones Recientes
+
+### v2.0 - Integración de Generadores y Zona de Seguridad
+
+**Fecha:** Abril 2026
+
+#### Nuevas Funcionalidades:
+
+1. **Sistema de Generadores** (`src/utils/generators.js`)
+   - `ConstantGenerator`: valor constante
+   - `ListGenerator`: recorre lista de valores, repite el último
+   - `ExponentialGenerator`: distribución exponencial
+
+2. **Abandono con Eventos Específicos**
+   - Cada cliente en cola tiene su propio evento `ABANDONMENT` programado
+   - Ya no se verifica abandonos iterando toda la cola
+
+3. **Zona de Seguridad** (Problema 5 del TP)
+   - Eventos `ENTER_SZ` y `ARRIVAL_PS`
+   - El cliente cruza la SZ y luego llega al punto de servicio
+
+#### Correcciones de Bugs:
+
+1. **Evento fantasma en ciclos de descanso**
+   - Al iniciar descanso mientras el servidor está BUSY, ahora se elimina el evento `SERVICE_END` de la FEL
+   - Al regresar, se restaura el cliente y el tiempo restante
+
+2. **ListGenerator desde string**
+   - El constructor del Simulator detecta si el valor contiene comas y crea `ListGenerator` automáticamente
+
+3. **Concatenación de strings**
+   - Los valores de config ahora se convierten a número para evitar concatenación `"45" + 28800 = "4528800"`
+
+#### Estructura del Constructor:
+
+```javascript
+constructor(config, flags, initialState = {}, generators = {})
+```
+
+- `generators`: objeto opcional con instancias de generadores personalizadas
+- Si no se pasan, se crean automáticamente según el tipo de valor en `config`
