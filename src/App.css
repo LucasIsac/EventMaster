@@ -517,6 +517,33 @@ kbd {
 .event-badge.abandono { background: #fef3c7; color: #92400e; }
 .event-badge.inicio { background: #e2e8f0; color: #475569; }
 
+.time-input-container {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.time-input {
+  width: 48px;
+  padding: 8px 4px;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-family: monospace;
+}
+
+.time-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.time-separator {
+  font-size: 1rem;
+  font-weight: bold;
+  color: var(--text-light);
+}
+
 @media (max-width: 768px) {
   .config-grid {
     grid-template-columns: 1fr;
@@ -525,4 +552,54 @@ kbd {
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+}
+
+.time-field {
+  width: 100%;
+}
+
+.time-field-input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+
+.time-field-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.time-field-indicator {
+  font-size: 0.7rem;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dist-selector {
+  display: flex;
+  gap: 4px;
+}
+
+.dist-selector button {
+  padding: 2px 8px;
+  font-size: 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+}
+
+.dist-selector button.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.error-text {
+  color: #ef4444;
 }

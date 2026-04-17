@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Simulator } from './engine/Simulator';
+import TimeInput from './components/TimeInput';
+import TimeField from './components/TimeField';
 import './App.css';
 
 function App() {
@@ -119,29 +121,6 @@ function App() {
     return (busyTime / totalTime * 100).toFixed(1);
   };
 
-  const formatTimeInput = (seconds, isRelative = false) => {
-    if (typeof seconds !== 'number' || isNaN(seconds)) return '00:00:00';
-    const absSeconds = isRelative ? config.startTime + seconds : seconds;
-    const h = Math.floor(absSeconds / 3600);
-    const m = Math.floor((absSeconds % 3600) / 60);
-    const s = absSeconds % 60;
-    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-  };
-
-  const parseTime = (str, asRelative = false) => {
-    if (!str || typeof str !== 'string') return 0;
-    const parts = str.split(':').map(Number);
-    if (parts.length === 3 && !parts.some(isNaN)) {
-      const absTime = parts[0] * 3600 + parts[1] * 60 + parts[2];
-      return asRelative ? absTime - config.startTime : absTime;
-    }
-    if (parts.length === 2 && !parts.some(isNaN)) {
-      const absTime = parts[0] * 3600 + parts[1] * 60;
-      return asRelative ? absTime - config.startTime : absTime;
-    }
-    return 0;
-  };
-
   const getProgress = () => {
     if (!currentState) return 0;
     const total = config.startTime + config.maxTime;
@@ -191,11 +170,9 @@ function App() {
                 </label>
                 <label>
                   <span>Hora inicio (HH:MM:SS)</span>
-                  <input 
-                    type="text" 
-                    value={config.startTime === 0 ? '00:00:00' : formatTimeInput(config.startTime)} 
-                    onChange={(e) => updateConfig('startTime', parseTime(e.target.value))}
-                    placeholder="00:00:00"
+                  <TimeInput 
+                    value={config.startTime} 
+                    onChange={(val) => updateConfig('startTime', val)}
                   />
                 </label>
               </div>
@@ -203,16 +180,24 @@ function App() {
               <div className="config-group">
                 <h3>ΔtLL</h3>
                 <label>
-                  <span>Intervalo llegada (ej: 45 o 65,6,2,21)</span>
-                  <input type="text" value={config.arrivalInterval} onChange={(e) => updateConfig('arrivalInterval', e.target.value)} />
+                  <span>Intervalo llegada (ej: 45 o 30,45,60 o 30 - 60)</span>
+                  <TimeField 
+                    value={config.arrivalInterval} 
+                    onChange={(val) => updateConfig('arrivalInterval', val)}
+                    placeholder="45"
+                  />
                 </label>
               </div>
 
               <div className="config-group">
                 <h3>ΔtS</h3>
                 <label>
-                  <span>Tiempo servicio (ej: 40 o 30,50,25)</span>
-                  <input type="text" value={config.serviceTime} onChange={(e) => updateConfig('serviceTime', e.target.value)} />
+                  <span>Tiempo servicio (ej: 40 o 30,50,25 o 30 - 50)</span>
+                  <TimeField 
+                    value={config.serviceTime} 
+                    onChange={(val) => updateConfig('serviceTime', val)}
+                    placeholder="40"
+                  />
                 </label>
               </div>
 
@@ -229,11 +214,9 @@ function App() {
                 {initialState.serverBusy && (
                   <label>
                     <span>Ocupado hasta (HH:MM:SS)</span>
-                    <input 
-                      type="text" 
-                      value={formatTimeInput(initialState.busyUntil, true)} 
-                      onChange={(e) => updateInitialState('busyUntil', parseTime(e.target.value, true))}
-                      placeholder="00:00:00"
+                    <TimeInput 
+                      value={initialState.busyUntil + config.startTime} 
+                      onChange={(val) => updateInitialState('busyUntil', val - config.startTime)}
                     />
                   </label>
                 )}
