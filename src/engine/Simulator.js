@@ -342,6 +342,12 @@ export class Simulator {
       this.serverState = ServerState.BUSY;
       this.clientInService = client;
       const serviceTime = this.generators.service.next();
+      // Skip if generator returns 0 or invalid
+      if (!serviceTime || serviceTime <= 0) {
+        this.serverState = ServerState.IDLE;
+        this.#scheduleNextArrival(isVip);
+        return;
+      }
       this.serviceEndTime = this.clock + serviceTime;
       this.fel.push(createEvent(this.serviceEndTime, EventType.SERVICE_END, { clientId: client.id }));
       action = `C${client.id}${isVip ? ' (VIP)' : ''} entra en servicio (ΔtS=${serviceTime.toFixed(1)})`;
@@ -371,7 +377,11 @@ export class Simulator {
   #scheduleNextArrival(isVip = false) {
     const arrivalType = isVip ? EventType.ARRIVAL_VIP : EventType.ARRIVAL;
     if (!this.fel.some(e => e.type === arrivalType)) {
-      const nextArrival = this.clock + this.generators.arrival.next();
+      const nextArrivalValue = this.generators.arrival.next();
+      // Skip if generator returns 0 or invalid value to prevent infinite loop
+      if (!nextArrivalValue || nextArrivalValue <= 0) return;
+      
+      const nextArrival = this.clock + nextArrivalValue;
       if (nextArrival <= this.config.startTime + this.config.maxTime) {
         this.fel.push(createEvent(nextArrival, arrivalType, {}));
       }
@@ -394,9 +404,16 @@ export class Simulator {
       
       if (this.clientInService) {
         const serviceTime = this.generators.service.next();
-        this.serviceEndTime = this.clock + serviceTime;
-        this.fel.push(createEvent(this.serviceEndTime, EventType.SERVICE_END, { clientId: this.clientInService.id }));
-        action += ` -> C${this.clientInService.id}${this.clientInService.priority === ClientPriority.VIP ? ' (VIP)' : ''} en servicio (ΔtS=${serviceTime.toFixed(1)})`;
+        // Skip if generator returns 0 or invalid
+        if (!serviceTime || serviceTime <= 0) {
+          this.serverState = ServerState.IDLE;
+          this.clientInService = null;
+          this.serviceEndTime = null;
+        } else {
+          this.serviceEndTime = this.clock + serviceTime;
+          this.fel.push(createEvent(this.serviceEndTime, EventType.SERVICE_END, { clientId: this.clientInService.id }));
+          action += ` -> C${this.clientInService.id}${this.clientInService.priority === ClientPriority.VIP ? ' (VIP)' : ''} en servicio (ΔtS=${serviceTime.toFixed(1)})`;
+        }
       } else {
         this.serverState = ServerState.IDLE;
         this.serviceEndTime = null;
