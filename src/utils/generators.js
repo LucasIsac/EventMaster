@@ -1,14 +1,12 @@
 // src/utils/generators.js
-// Equivalente a seriat/utils/generators.py
-
+// Clase base abstracta para generadores de valores
 export class Generator {
-  next() { throw new Error("Abstract method"); }
+  next() { throw new Error("Método abstracto no implementado"); }
   getDesc() { return ""; }
 }
 
 /**
  * Genera siempre el mismo valor constante.
- * Equivalente a ConstantGenerator de Seriat.
  * Uso: new ConstantGenerator(45) → siempre devuelve 45
  */
 export class ConstantGenerator extends Generator {
@@ -22,9 +20,8 @@ export class ConstantGenerator extends Generator {
 
 /**
  * Recorre una lista de valores. Al terminar, repite el último.
- * Equivalente a ListGenerator de Seriat (repeat_last: true).
+ * Esto permite reproducir exactamente las tablas manuales de ejercicios prácticos.
  * Uso: new ListGenerator([30, 45, 60]) → 30, 45, 60, 60, 60, ...
- * Esto permite reproducir exactamente las tablas manuales del TP.
  */
 export class ListGenerator extends Generator {
   constructor(values = []) {
@@ -43,7 +40,7 @@ export class ListGenerator extends Generator {
 }
 
 /**
- * Genera valores con distribución exponencial. Para simulaciones M/M/1 reales.
+ * Genera valores con distribución exponencial. Para simulaciones M/M/1.
  * Uso: new ExponentialGenerator(45) → valores aleatorios con media 45
  */
 export class ExponentialGenerator extends Generator {
@@ -52,13 +49,14 @@ export class ExponentialGenerator extends Generator {
     this.mean = mean;
   }
   next() {
+    // Transformada inversa para distribución exponencial
     return -this.mean * Math.log(1 - Math.random());
   }
   getDesc() { return `(exponencial, media: ${this.mean})`; }
 }
 
 /**
- * Genera valores con distribución uniforme en un rango.
+ * Genera valores con distribución uniforme en un rango [min, max].
  * Uso: new UniformGenerator(10, 20) → valores aleatorios entre 10 y 20
  */
 export class UniformGenerator extends Generator {
@@ -74,9 +72,10 @@ export class UniformGenerator extends Generator {
 }
 
 /**
- * Factory para crear generadores desde un string de tipo.
- * type: 'constant' | 'list' | 'exponential'
- * value: número para constant/exponential, array para list
+ * Fábrica para crear generadores desde un tipo y un valor.
+ * @param {string} type - 'constant' | 'list' | 'exponential'
+ * @param {number|array} value - Valor único o array de valores
+ * @returns {Generator} Una instancia de una subclase de Generator.
  */
 export function createGenerator(type, value) {
   switch (type) {
