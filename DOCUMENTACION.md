@@ -18,14 +18,19 @@ El simulador permite:
 eventmaster-web/
 ├── src/
 │   ├── engine/
-│   │   └── Simulator.js      # Motor de simulación DES
+│   │   └── Simulator.js      # Motor de simulación DES con Checkpoints
 │   ├── components/
+│   │   ├── ConfigPanel.jsx    # Panel de configuración y reglas de checkpoints
+│   │   ├── ControlPanel.jsx   # Botones de ejecución y apertura de Modal
+│   │   ├── StatsPanel.jsx     # Estadísticas en tiempo real y UI visual
+│   │   ├── AdvancedTable.jsx  # Tabla detallada de Eventos y FEL
+│   │   ├── CheckpointsModal.jsx # Galería de "fotos" capturadas
 │   │   ├── TimeInput.jsx      # Input de hora HH:MM:SS
-│   │   └── TimeField.jsx      # Campo con modos de entrada
+│   │   └── TimeField.jsx      # Campo de entrada con distribuciones
 │   ├── utils/
-│   │   └── timeParser.js      # Parser y generadores de valores
-│   ├── App.jsx               # Componente React principal (UI)
-│   ├── App.css               # Estilos
+│   │   └── generators.js      # Clases de generadores (Uniform, Exp, etc.)
+│   ├── App.jsx               # Componente Contenedor Principal
+│   ├── App.css               # Estilos globales y grid
 │   └── main.jsx              # Entry point
 ├── public/
 │   └── favicon.svg
@@ -33,8 +38,6 @@ eventmaster-web/
 ├── package.json
 ├── vite.config.js
 ├── eslint.config.js
-├── VISUAL_REVIEW_SKILL.md     # Skill de revisión visual
-├── plan_evolucion.md         # Historial de evoluciones
 └── DOCUMENTACION.md          # Este archivo
 ```
 
@@ -69,7 +72,8 @@ Cada `step()` ejecuta:
 2. **Avanzar reloj** → Actualiza `this.clock` al tiempo del evento
 3. **Remover evento** → Elimina el evento procesado de la FEL
 4. **Procesar evento** → Ejecuta la lógica correspondiente según el tipo
-5. **Registrar en historial** → Guarda el estado actual para resultados
+5. **Registrar en historial** → Guarda el estado actual para la tabla
+6. **Evaluar Checkpoints** → Ejecuta `#evalCheckpoints()` para ver si se cumple alguna regla configurada y "sacar una foto" del estado actual.
 
 ### 3.3 Tipos de Eventos
 
@@ -118,35 +122,17 @@ export const EventType = {
 };
 ```
 
-### 4.2 Funciones Auxiliares
+### 4.2 Generadores de Tiempos (generators.js)
 
-#### parseArrayInput(value)
-Convierte el input del usuario en un formato usable internamente:
+El simulador reemplazó las funciones antiguas por clases especializadas (Generadores) que calculan los tiempos (ΔtLL, ΔtS). 
 
-```javascript
-// Número → array simple
-parseArrayInput(45) → [45]
+#### parseInputValue(value, distType)
+El motor de inicialización parsea el input visual del usuario ("45", "30-50", "10,20") y crea la clase adecuada:
 
-// Lista string → array
-parseArrayInput("30,45,60") → [30, 45, 60]
-
-// Rango → objeto con bounds
-parseArrayInput("30-60") → { min: 30, max: 60, isRange: true }
-```
-
-#### getNextValue(arrayObj, indexRef)
-Genera el siguiente valor según el tipo de array:
-
-```javascript
-// Constante (array simple): devuelve el valor en el índice actual
-[45, 45, 45] → 45, 45, 45, ...
-
-// Lista: recorre la lista
-[30, 45, 60] → 30, 45, 60, 60, 60, ...
-
-// Rango: genera valor aleatorio entre min y max
-{ min: 30, max: 60, isRange: true } → 42.3, 35.7, 51.2, ...
-```
+- **ConstantGenerator**: Devuelve siempre el mismo valor (ej: `45`).
+- **ListGenerator**: Devuelve los valores de una lista secuencialmente y repite el último valor infinitamente al terminar (ej: `[30, 45, 60]`).
+- **UniformGenerator**: Genera un número aleatorio con distribución uniforme usando `min + Math.random() * (max - min)`.
+- **ExponentialGenerator**: Genera un número aleatorio con distribución exponencial usando `-mean * Math.log(Math.random())`.
 
 #### createClient(arrivalTime, config, flags, isVip)
 Crea un objeto cliente:
@@ -263,30 +249,51 @@ constructor(config, flags, initialState = {})
 
 ---
 
+## 5. Sistema de Checkpoints (Auditoría e Instantáneas)
+
+El sistema de checkpoints permite "congelar" y capturar una copia completa del estado del simulador (`clock`, `stats`, `queue`, `fel`) cuando se cumple una condición definida por el usuario. Es fundamental para resolver problemas teóricos que exigen saber el estado exacto en un tiempo "X".
+
+### 5.1 Estructura Interna en el Motor (`Simulator.js`)
+
+Se inyectan las reglas con `addCheckpoint`:
+
+```javascript
+addCheckpoint(name, conditionFn, recurring = false) {
+  this.checkpointsConfig.push({ name, conditionFn, recurring, triggered: false });
+}
+```
+
+- **`conditionFn`**: Una función callback que recibe el `estadoActual` y devuelve un booleano `true` si la foto debe tomarse.
+- **`recurring`**: Si es `true`, el checkpoint puede dispararse múltiples veces (por ejemplo, "En cada descanso"). Si es `false`, se toma la foto solo una vez (por ejemplo, "Al llegar al minuto 60").
+
+### 5.2 Evaluación Cíclica
+Al finalizar cada `step()`, el motor ejecuta `#evalCheckpoints()` que itera sobre `this.checkpointsConfig`. Si la regla no fue ejecutada (o es recurrente) y la condición es verdadera:
+
+1. Realiza una copia profunda (`JSON.parse(JSON.stringify())`) de los arrays críticos para evitar mutaciones futuras.
+2. Almacena el resultado en `this.checkpoints` (el carrete de fotos).
+
+### 5.3 Integración Visual (Reglas y Galería Modal)
+En la UI, el componente `<ConfigPanel>` permite al usuario definir las reglas. Al presionar "Inicializar", `App.jsx` inyecta estas reglas al motor:
+
+```javascript
+// Ejemplo: Foto cada X minutos
+const totalTriggers = Math.floor(maxTime / interval);
+for(let i=1; i<=totalTriggers; i++) {
+  sim.addCheckpoint(`Foto (#${i})`, s => s.clock >= s.config.startTime + (i * interval));
+}
+```
+
+El componente `<CheckpointsModal>` visualiza este arreglo como tarjetas estilo galería, donde el usuario puede ver los abandonos, clientes en cola, e incluso el último evento responsable de la captura.
+
+---
+
 ## 5. Sistema de Generación de Valores
 
-El sistema utiliza funciones auxiliares para generar valores de tiempo:
+El sistema utiliza funciones auxiliares para generar valores de tiempo mediante Clases especializadas (detalladas en el punto 4.2). En la Interfaz de Usuario el comportamiento se mapea de la siguiente forma:
 
-### 5.1 Valor Constante
-```javascript
-// Input: "45" o 45
-// Output: siempre 45
-```
-
-### 5.2 Lista de Valores
-```javascript
-// Input: "30,45,60"
-// Output: 30, 45, 60, 60, 60, ...
-// Al llegar al final, repite el último valor
-```
-
-### 5.3 Rango Aleatorio
-```javascript
-// Input: "30-60"
-// Output: 42.3, 35.7, 51.2, 28.9, ...
-// Genera valores aleatorios uniforme entre min y max
-// Fórmula: min + Math.random() * (max - min)
-```
+- **"45"**: Se procesa como constante (`ConstantGenerator`).
+- **"30, 45, 60"**: Se procesa como lista (`ListGenerator`).
+- **"30 - 60"**: Se procesa como rango Uniforme o Exponencial dependiendo del Checkbox seleccionado.
 
 ---
 
@@ -443,29 +450,22 @@ Cada paso se registra en `this.history` con:
 
 ## 11. Integración con React (App.jsx)
 
-### Flujo de la UI
-1. Usuario configura parámetros en los formularios
-2. Click en "Inicializar" → crea nuevo `Simulator`
-3. "Paso" → ejecuta un `step()`
-4. "Ejecutar" → ejecuta steps en intervalo (controlado por `speed`)
-5. "Reiniciar" → limpia todo
+### Flujo de la Arquitectura UI (Componentes)
+La interfaz principal (`App.jsx`) es un contenedor orquestador que maneja el estado global del sistema y lo pasa hacia abajo a componentes modulares:
 
-### Estado React (currentState)
+1. **`<ConfigPanel>`**: Contiene los inputs de parámetros y reglas lógicas (incluyendo configuración de Checkpoints).
+2. **`<ControlPanel>`**: Botonera (Play, Pausa, Inicializar) y barra de progreso temporal.
+3. **`<StatsPanel>`**: Visualizador de cajas de datos (Tiempo, Servidor, Atendidos, Cola Visual Dinámica).
+4. **`<AdvancedTable>`**: La tabla gigante tabular de log a nivel FEL.
+5. **`<CheckpointsModal>`**: Ventana modal flotante con efecto *backdrop-blur* que permite auditar las "fotos" tomadas por el Checkpoint Engine sin tapar la página entera.
+
+### Estado React (App.jsx)
 ```javascript
-{
-  clock: 0,
-  serverState: 'LIBRE',
-  serverPresent: true,
-  queue: [...],
-  vipQueue: [...],
-  queueLength: 0,
-  clientInService: {...},
-  fel: [...],
-  history: [...],
-  stats: {...},
-  nextBreakTime: null,
-  nextWorkTime: null
-}
+const [config, setConfig] = useState({...});
+const [flags, setFlags] = useState({...});
+const [initialState, setInitialState] = useState({...});
+const [checkpointRules, setCheckpointRules] = useState([]); // Reglas definidas por usuario
+const [currentState, setCurrentState] = useState(null); // Snapshot extraído de Simulator.getCurrentState()
 ```
 
 ---
