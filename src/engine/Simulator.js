@@ -170,6 +170,8 @@ export class Simulator {
     };
 
     this.history = [];
+    this.checkpoints = []; // Configured checkpoints
+    this.checkpointSnapshots = []; // Triggered results
     this.pausedServiceRemaining = null;
     this.pausedClient = null;
     this.firstArrivalScheduled = false;
@@ -539,6 +541,30 @@ export class Simulator {
     return this.vipQueue.length + this.queue.length;
   }
 
+  addCheckpoint(name, conditionFn, recurring = false) {
+    this.checkpoints.push({ name, conditionFn, triggered: false, recurring });
+  }
+
+  #evalCheckpoints() {
+    for (const cp of this.checkpoints) {
+      if (!cp.triggered && cp.conditionFn(this)) {
+        if (!cp.recurring) {
+          cp.triggered = true;
+        }
+        this.checkpointSnapshots.push({
+          name: cp.name,
+          time: this.clock,
+          stats: { ...this.stats },
+          queueLength: this.#getTotalQueue(),
+          vipQueueLength: this.vipQueue.length,
+          commonQueueLength: this.queue.length,
+          serverState: this.serverState,
+          serverPresent: this.serverPresent
+        });
+      }
+    }
+  }
+
   #recordHistory(eventType, action) {
     const nextBreak = this.fel.find(e => e.type === EventType.SERVER_BREAK_START);
     const nextWork = this.fel.find(e => e.type === EventType.SERVER_BREAK_END);
@@ -599,6 +625,8 @@ export class Simulator {
         break;
     }
 
+    this.#evalCheckpoints();
+
     return true;
   }
 
@@ -618,6 +646,7 @@ export class Simulator {
 
     return {
       history: this.history,
+      checkpoints: this.checkpointSnapshots,
       stats: {
         ...this.stats,
         totalTime,
@@ -640,6 +669,7 @@ export class Simulator {
       clientInService: this.clientInService,
       fel: [...this.fel],
       history: [...this.history],
+      checkpoints: [...this.checkpointSnapshots],
       stats: { ...this.stats },
       nextBreakTime: this.nextBreakTime,
       nextWorkTime: this.nextWorkTime
