@@ -79,7 +79,8 @@ export function getModeLabel(parsed) {
   
   switch (parsed.mode) {
     case 'constant':
-      return { text: `Constante: ${parsed.value}`, type: 'constant' };
+      const displayVal = parsed.value === Infinity ? '∞' : parsed.value;
+      return { text: `Constante: ${displayVal}`, type: 'constant' };
     case 'list':
       return { text: `Lista: ${parsed.values.length} valores`, type: 'list' };
     case 'range':

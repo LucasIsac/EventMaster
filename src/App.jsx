@@ -8,21 +8,19 @@ import { CheckpointsModal } from './components/CheckpointsModal';
 import './App.css';
 
 function App() {
-  // Estado para la configuración de la simulación
   const [config, setConfig] = useState({
-    maxTime: 600, // Tiempo máximo a simular (segundos)
-    startTime: 28800, // Hora de inicio en segundos (ej: 08:00:00 = 28800)
-    arrivalInterval: '45', // Delta t de llegadas (puede ser constante, lista o rango)
-    serviceTime: '40', // Delta t de servicio
-    workTime: 0,
-    restTime: 0,
-    maxWaitTime: Infinity, // Tiempo de paciencia de los clientes
-    travelTime: 0 // Tiempo de viaje para Zona de Seguridad
+    maxTime: 1800, // 30 minutos de simulación
+    startTime: 28800, // 08:00:00
+    arrivalInterval: '60 - 120', // Clientes llegan cada 1-2 min
+    serviceTime: '45 - 90', // Servicio de 45-90 seg
+    workTime: '300 - 600', // Trabaja entre 5 y 10 min
+    restTime: '120 - 240', // Descansa entre 2 y 4 min
+    maxWaitTime: 'Infinity',
+    travelTime: '0'
   });
   
-  // Banderas para habilitar/deshabilitar funcionalidades especiales
   const [flags, setFlags] = useState({
-    hasServerBreaks: false,
+    hasServerBreaks: true, // Activado para el Problema 2
     hasClientAbandonment: false,
     hasPriority: false,
     hasSecurityZone: false
@@ -160,13 +158,42 @@ function App() {
   const updateInitialState = (key, value) => setInitialState(prev => ({ ...prev, [key]: value }));
 
   /**
+   * Genera una configuración aleatoria razonable para pruebas rápidas.
+   */
+  const generateRandomScenario = useCallback(() => {
+    setConfig(prev => ({
+      ...prev,
+      arrivalInterval: '30 - 90',
+      serviceTime: '20 - 60',
+      workTime: '600 - 1200',
+      restTime: '60 - 180',
+      travelTime: '5 - 15',
+      maxWaitTime: '120 - 300'
+    }));
+    setFlags({
+      hasServerBreaks: Math.random() > 0.5,
+      hasClientAbandonment: Math.random() > 0.5,
+      hasPriority: Math.random() > 0.5,
+      hasSecurityZone: Math.random() > 0.5
+    });
+  }, []);
+
+  /**
    * Calcula el porcentaje de utilización del servidor.
    */
   const calculateUtilization = () => {
     if (!currentState) return '0.0';
     const totalTime = currentState.clock - config.startTime;
     if (totalTime <= 0) return '0.0';
-    const busyTime = currentState.stats.clientsServed * config.serviceTime;
+
+    // Si es un rango, intentamos usar un valor medio para la estimación visual rápida
+    let svcTime = parseFloat(config.serviceTime);
+    if (String(config.serviceTime).includes(' - ')) {
+      const parts = String(config.serviceTime).split(' - ').map(parseFloat);
+      svcTime = (parts[0] + parts[1]) / 2;
+    }
+
+    const busyTime = currentState.stats.clientsServed * svcTime;
     return (busyTime / totalTime * 100).toFixed(1);
   };
 
@@ -223,6 +250,7 @@ function App() {
           updateInitialState={updateInitialState} 
           checkpointRules={checkpointRules}
           setCheckpointRules={setCheckpointRules}
+          generateRandomScenario={generateRandomScenario}
         />
 
         <ControlPanel 

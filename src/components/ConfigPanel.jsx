@@ -3,10 +3,19 @@ import TimeInput from './TimeInput';
 import TimeField from './TimeField';
 import { CheckpointsConfig } from './CheckpointsConfig';
 
-export function ConfigPanel({ config, flags, initialState, updateConfig, updateFlags, updateInitialState, checkpointRules, setCheckpointRules }) {
+export function ConfigPanel({ 
+  config, flags, initialState, updateConfig, updateFlags, updateInitialState, 
+  checkpointRules, setCheckpointRules, generateRandomScenario 
+}) {
   return (
     <section className="config-section">
       <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h2 style={{ margin: 0 }}>⚙️ Configuración</h2>
+          <button className="btn btn-secondary" onClick={generateRandomScenario} style={{ padding: '8px 16px', fontSize: '0.8rem' }}>
+            🎲 Escenario Aleatorio
+          </button>
+        </div>
         <div className="config-grid">
           <div className="config-group">
             <h3>Tiempo</h3>
@@ -79,11 +88,19 @@ export function ConfigPanel({ config, flags, initialState, updateConfig, updateF
               <>
                 <label>
                   <span>ΔT - Tiempo Trabajo (seg)</span>
-                  <input type="number" value={config.workTime} onChange={(e) => updateConfig('workTime', parseInt(e.target.value) || 0)} />
+                  <TimeField 
+                    value={config.workTime} 
+                    onChange={(val) => updateConfig('workTime', val)}
+                    placeholder="600"
+                  />
                 </label>
                 <label>
                   <span>ΔD - Tiempo Descanso (seg)</span>
-                  <input type="number" value={config.restTime} onChange={(e) => updateConfig('restTime', parseInt(e.target.value) || 0)} />
+                  <TimeField 
+                    value={config.restTime} 
+                    onChange={(val) => updateConfig('restTime', val)}
+                    placeholder="60"
+                  />
                 </label>
               </>
             )}
@@ -97,7 +114,14 @@ export function ConfigPanel({ config, flags, initialState, updateConfig, updateF
               <span>Abandonos</span>
             </label>
             {flags.hasClientAbandonment && (
-              <label><span>ΔSC (seg)</span><input type="number" value={config.maxWaitTime === Infinity ? '' : config.maxWaitTime} onChange={(e) => updateConfig('maxWaitTime', parseInt(e.target.value) || Infinity)} placeholder="∞" /></label>
+              <label>
+                <span>ΔSC (seg)</span>
+                <TimeField 
+                  value={config.maxWaitTime} 
+                  onChange={(val) => updateConfig('maxWaitTime', val)}
+                  placeholder="∞"
+                />
+              </label>
             )}
             <label className="switch">
               <input type="checkbox" checked={flags.hasPriority} onChange={(e) => updateFlags('hasPriority', e.target.checked)} />
@@ -110,7 +134,14 @@ export function ConfigPanel({ config, flags, initialState, updateConfig, updateF
               <span>Zona de Seguridad</span>
             </label>
             {flags.hasSecurityZone && (
-              <label><span>ΔtSZ→PS (seg)</span><input type="number" value={config.travelTime} onChange={(e) => updateConfig('travelTime', parseInt(e.target.value) || 0)} /></label>
+              <label>
+                <span>ΔtSZ→PS (seg)</span>
+                <TimeField 
+                  value={config.travelTime} 
+                  onChange={(val) => updateConfig('travelTime', val)}
+                  placeholder="10"
+                />
+              </label>
             )}
           </div>
 

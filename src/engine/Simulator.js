@@ -1,4 +1,5 @@
 import { ConstantGenerator, ListGenerator, UniformGenerator, ExponentialGenerator } from '../utils/generators.js';
+import { parseTimeInput } from '../utils/timeParser.js';
 
 // Posibles estados del servidor
 export const ServerState = {
@@ -35,19 +36,6 @@ export function resetCounters() {
 }
 
 /**
- * Crea un objeto cliente con sus propiedades.
- */
-function createClient(arrivalTime, config, flags, isVip = false) {
-  const vip = isVip || (flags.hasPriority && Math.random() < 0.3);
-  return {
-    id: ++clientIdCounter,
-    arrivalTime,
-    patienceTime: config.maxWaitTime,
-    priority: vip ? ClientPriority.VIP : ClientPriority.NORMAL
-  };
-}
-
-/**
  * Crea un evento para la FEL.
  */
 function createEvent(time, type, data = {}) {
@@ -78,79 +66,45 @@ export class Simulator {
     this.flags = { ...flags };
 
     /**
-     * Parsea valores de entrada y detecta el tipo de generador necesario.
+     * Helper para obtener un generador basado en un valor de entrada.
      */
-    const parseInputValue = (value, distType = 'uniform') => {
-      if (typeof value !== 'string') {
-        return { mode: 'constant', value: Number(value) || 0 };
+    const getGenerator = (inputValue, distType = 'uniform') => {
+      const parsed = parseTimeInput(String(inputValue));
+      
+      if (!parsed || parsed.error) {
+        return new ConstantGenerator(parseFloat(inputValue) || 0);
       }
-      
-      const trimmed = value.trim();
-      
-      // Lista: ej "10, 20, 30"
-      if (trimmed.includes(',')) {
-        const arr = trimmed.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
-        if (arr.length > 0) {
-          return { mode: 'list', values: arr };
-        }
-      }
-      
-      // Rango: ej "10-20"
-      if (trimmed.includes('-')) {
-        const parts = trimmed.split('-').map(v => parseFloat(v.trim()));
-        const min = parts[0];
-        const max = parts[1];
-        if (!isNaN(min) && !isNaN(max) && max > min) {
+
+      switch (parsed.mode) {
+        case 'constant':
+          return new ConstantGenerator(parsed.value);
+        case 'list':
+          return new ListGenerator(parsed.values);
+        case 'range':
           if (distType === 'exponential') {
-            const mean = (min + max) / 2;
-            return { mode: 'exponential', value: mean };
+            const mean = (parsed.min + parsed.max) / 2;
+            return new ExponentialGenerator(mean);
           }
-          return { mode: 'uniform', min, max };
-        }
-      }
-      
-      // Constante
-      const num = Number(trimmed);
-      if (!isNaN(num)) {
-        return { mode: 'constant', value: num };
-      }
-      
-      return { mode: 'constant', value: 0 };
-    };
-
-    // Inicialización de generadores para distintos propósitos
-    const createArrivalGen = () => {
-      const parsed = parseInputValue(this.config.arrivalInterval, this.config.arrivalDistType || 'uniform');
-      switch (parsed.mode) {
-        case 'list': return new ListGenerator(parsed.values);
-        case 'uniform': return new UniformGenerator(parsed.min, parsed.max);
-        case 'exponential': return new ExponentialGenerator(parsed.value);
-        default: return new ConstantGenerator(parsed.value);
-      }
-    };
-
-    const createServiceGen = () => {
-      const parsed = parseInputValue(this.config.serviceTime, this.config.serviceDistType || 'uniform');
-      switch (parsed.mode) {
-        case 'list': return new ListGenerator(parsed.values);
-        case 'uniform': return new UniformGenerator(parsed.min, parsed.max);
-        case 'exponential': return new ExponentialGenerator(parsed.value);
-        default: return new ConstantGenerator(parsed.value);
+          return new UniformGenerator(parsed.min, parsed.max);
+        default:
+          return new ConstantGenerator(0);
       }
     };
 
     this.generators = {
-      arrival: generators.arrival || createArrivalGen(),
-      service: generators.service || createServiceGen(),
-      breakDuration: generators.breakDuration || new ConstantGenerator(Number(this.config.restTime) || 0),
-      travel: generators.travel || new ConstantGenerator(Number(this.config.travelTime) || 0),
+      arrival: generators.arrival || getGenerator(this.config.arrivalInterval, this.config.arrivalDistType || 'uniform'),
+      service: generators.service || getGenerator(this.config.serviceTime, this.config.serviceDistType || 'uniform'),
+      breakDuration: generators.breakDuration || getGenerator(this.config.restTime, this.config.restDistType || 'uniform'),
+      travel: generators.travel || getGenerator(this.config.travelTime, this.config.travelDistType || 'uniform'),
+      workDuration: getGenerator(this.config.workTime, this.config.workDistType || 'uniform'),
+      patience: getGenerator(this.config.maxWaitTime, this.config.patienceDistType || 'uniform'),
     };
 
     // Estado interno y estadísticas
     this._serviceTimeHistory = [];
     this.initialState = initialState;
-    this.workTime = config.workTime || 0;
-    this.restTime = config.restTime || 0;
+    this.workTime = parseFloat(config.workTime) || 0;
+    this.restTime = parseFloat(config.restTime) || 0;
 
     this.clock = this.config.startTime;
     this.fel = []; // Lista de Eventos Futuros
@@ -185,6 +139,19 @@ export class Simulator {
   }
 
   /**
+   * Crea un objeto cliente con sus propiedades usando el generador de paciencia.
+   */
+  #createClient(arrivalTime, isVip = false) {
+    const vip = isVip || (this.flags.hasPriority && Math.random() < 0.3);
+    return {
+      id: ++clientIdCounter,
+      arrivalTime,
+      patienceTime: this.generators.patience.next(),
+      priority: vip ? ClientPriority.VIP : ClientPriority.NORMAL
+    };
+  }
+
+  /**
    * Configura el estado inicial según los parámetros recibidos.
    */
   #initialize() {
@@ -197,16 +164,16 @@ export class Simulator {
 
     // Poblar colas iniciales
     for (let i = 0; i < (vipClientsInQueue || 0); i++) {
-      this.vipQueue.push(createClient(this.clock, this.config, this.flags, true));
+      this.vipQueue.push(this.#createClient(this.clock, true));
     }
     for (let i = 0; i < (clientsInQueue || 0); i++) {
-      this.queue.push(createClient(this.clock, this.config, this.flags, false));
+      this.queue.push(this.#createClient(this.clock, false));
     }
 
     // Servidor ocupado desde el inicio
     if (serverBusy && busyUntil) {
       this.serverState = ServerState.BUSY;
-      this.clientInService = createClient(this.config.startTime, this.config, this.flags, Math.random() < 0.3 && this.flags.hasPriority);
+      this.clientInService = this.#createClient(this.config.startTime, Math.random() < 0.3 && this.flags.hasPriority);
       this.serviceEndTime = this.config.startTime + busyUntil;
       this.fel.push(createEvent(this.serviceEndTime, EventType.SERVICE_END, {
         clientId: this.clientInService.id
@@ -258,10 +225,13 @@ export class Simulator {
    * Programa el momento en que el servidor se toma un descanso.
    */
   #scheduleWorkCycle() {
-    if (!this.flags.hasServerBreaks || this.workTime <= 0) return;
+    if (!this.flags.hasServerBreaks) return;
 
     if (this.serverPresent && this.nextBreakTime === null) {
-      this.nextBreakTime = this.clock + this.workTime;
+      const workDuration = this.generators.workDuration.next();
+      if (workDuration <= 0) return;
+      
+      this.nextBreakTime = this.clock + workDuration;
       this.fel.push(createEvent(this.nextBreakTime, EventType.SERVER_BREAK_START, {}));
     }
   }
@@ -270,7 +240,7 @@ export class Simulator {
    * Programa el momento en que el servidor regresa de un descanso.
    */
   #scheduleNextWorkPeriod() {
-    if (!this.flags.hasServerBreaks || this.workTime <= 0) return;
+    if (!this.flags.hasServerBreaks) return;
 
     this.nextWorkTime = this.clock + this.generators.breakDuration.next();
     this.fel.push(createEvent(this.nextWorkTime, EventType.SERVER_BREAK_END, {}));
@@ -370,7 +340,7 @@ export class Simulator {
    */
   #handleArrival(isVip = false) {
     if (this.flags.hasSecurityZone) {
-      const client = createClient(this.clock, this.config, this.flags, isVip);
+      const client = this.#createClient(this.clock, isVip);
       
       if (!this.szBusy && this.serverState === ServerState.IDLE) {
         this.clientInService = client;
@@ -392,7 +362,7 @@ export class Simulator {
     }
 
     if (!this.serverPresent) {
-      const client = createClient(this.clock, this.config, this.flags, isVip);
+      const client = this.#createClient(this.clock, isVip);
       if (isVip) {
         this.vipQueue.push(client);
         this.#recordHistory(EventType.ARRIVAL_VIP, `C${client.id} (VIP) llega (servidor ausente) -> cola VIP`);
@@ -404,7 +374,7 @@ export class Simulator {
       return;
     }
 
-    const client = createClient(this.clock, this.config, this.flags, isVip);
+    const client = this.#createClient(this.clock, isVip);
     let action = '';
 
     if (this.serverState === ServerState.IDLE) {
