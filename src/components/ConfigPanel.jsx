@@ -57,14 +57,36 @@ export function ConfigPanel({
           </div>
 
           <div className="config-group">
+            <h3>Topología y Servidores</h3>
+            <label>
+              <span>Tipo de Sistema</span>
+              <select value={config.topology} onChange={(e) => updateConfig('topology', e.target.value)}>
+                <option value="AISLADOS">Aislados / Paralelos</option>
+                <option value="COLA_UNICA">Cola Única (Supermercado)</option>
+                <option value="ENCADENADOS">Sucesivos / Chained</option>
+              </select>
+            </label>
+            <label>
+              <span>Número de Servidores</span>
+              <input type="number" min="1" max="10" value={config.numServers} onChange={(e) => updateConfig('numServers', parseInt(e.target.value) || 1)} />
+            </label>
+          </div>
+
+          <div className="config-group">
             <h3>Estado Inicial</h3>
             <label>
               <span>Clientes en cola</span>
               <input type="number" value={initialState.clientsInQueue} onChange={(e) => updateInitialState('clientsInQueue', parseInt(e.target.value) || 0)} />
             </label>
+            {initialState.clientsInQueue > 0 && (
+              <label>
+                <span>Tiempo ya esperado (seg)</span>
+                <input type="number" value={initialState.initialWaitTime} onChange={(e) => updateInitialState('initialWaitTime', parseInt(e.target.value) || 0)} />
+              </label>
+            )}
             <label className="checkbox">
               <input type="checkbox" checked={initialState.serverBusy} onChange={(e) => updateInitialState('serverBusy', e.target.checked)} />
-              <span>Servidor ocupado</span>
+              <span>Servidor 1 ocupado</span>
             </label>
             {initialState.serverBusy && (
               <label>

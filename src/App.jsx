@@ -9,26 +9,29 @@ import './App.css';
 
 function App() {
   const [config, setConfig] = useState({
-    maxTime: 1800, // 30 minutos de simulación
+    maxTime: 3600, // 1 hora de simulación
     startTime: 28800, // 08:00:00
-    arrivalInterval: '60 - 120', // Clientes llegan cada 1-2 min
-    serviceTime: '45 - 90', // Servicio de 45-90 seg
-    workTime: '300 - 600', // Trabaja entre 5 y 10 min
-    restTime: '120 - 240', // Descansa entre 2 y 4 min
-    maxWaitTime: 'Infinity',
-    travelTime: '0'
+    arrivalInterval: '60 - 120',
+    serviceTime: '45 - 90',
+    workTime: '600 - 1200',
+    restTime: '60 - 180',
+    maxWaitTime: '600', // 10 min por defecto
+    travelTime: '0',
+    topology: 'COLA_UNICA',
+    numServers: 1
   });
   
   const [flags, setFlags] = useState({
-    hasServerBreaks: true, // Activado para el Problema 2
-    hasClientAbandonment: false,
+    hasServerBreaks: true,
+    hasClientAbandonment: true,
     hasPriority: false,
     hasSecurityZone: false
   });
   
-  // Estado inicial del sistema antes de empezar
   const [initialState, setInitialState] = useState({
     clientsInQueue: 0,
+    vipClientsInQueue: 0,
+    initialWaitTime: 0,
     serverBusy: false,
     busyUntil: 0
   });
