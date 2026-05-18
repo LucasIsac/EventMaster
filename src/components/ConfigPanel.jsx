@@ -35,11 +35,11 @@ export function ConfigPanel({
           <div className="config-group">
             <h3>ΔtLL</h3>
             <label>
-              <span>Intervalo llegada (ej: 45 o 30,45,60 o 30 - 60)</span>
+              <span>Intervalo llegada</span>
               <TimeField 
                 value={config.arrivalInterval} 
                 onChange={(val) => updateConfig('arrivalInterval', val)}
-                placeholder="45"
+                placeholder="30 - 60"
               />
             </label>
           </div>
@@ -47,11 +47,11 @@ export function ConfigPanel({
           <div className="config-group">
             <h3>ΔtS</h3>
             <label>
-              <span>Tiempo servicio (ej: 40 o 30,50,25 o 30 - 50)</span>
+              <span>Tiempo servicio</span>
               <TimeField 
                 value={config.serviceTime} 
                 onChange={(val) => updateConfig('serviceTime', val)}
-                placeholder="40"
+                placeholder="20 - 40"
               />
             </label>
           </div>

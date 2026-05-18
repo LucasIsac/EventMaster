@@ -2,13 +2,14 @@
 
 ## 1. Overview del Proyecto
 
-EventMaster es un simulador visual académico de teoría de colas que implementa el método de **Simulación de Eventos Discretos (DES)** para modelar sistemas de atención al cliente tipo M/M/1.
+EventMaster es un simulador visual académico de teoría de colas que implementa el método de **Simulación de Eventos Discretos (DES)** para modelar sistemas de atención al cliente (desde M/M/1 hasta múltiples servidores).
 
 El simulador permite:
 - Modelar llegadas de clientes y tiempos de servicio
+- Configurar múltiples servidores y topologías de sistema (Cola Única, Aislados, Encadenados)
 - Configurar prioridades (clientes VIP)
 - Manejar abandonos cuando el tiempo de espera excede un límite
-- Simular ciclos de trabajo/descanso del servidor
+- Simular ciclos de trabajo/descanso de los servidores
 
 ---
 
@@ -105,6 +106,12 @@ export const ServerState = {
   BREAK: 'AUSENTE' // Servidor en descanso
 };
 
+export const SystemTopology = {
+  ISOLATED: 'AISLADOS',       // Sistemas independientes en paralelo
+  SINGLE_QUEUE: 'COLA_UNICA', // Cola única, múltiples servidores
+  CHAINED: 'ENCADENADOS'      // Puestos sucesivos (Secuencial)
+};
+
 export const ClientPriority = {
   NORMAL: 'A',
   VIP: 'B'
@@ -129,8 +136,7 @@ El simulador reemplazó las funciones antiguas por clases especializadas (Genera
 #### parseInputValue(value, distType)
 El motor de inicialización parsea el input visual del usuario ("45", "30-50", "10,20") y crea la clase adecuada:
 
-- **ConstantGenerator**: Devuelve siempre el mismo valor (ej: `45`).
-- **ListGenerator**: Devuelve los valores de una lista secuencialmente y repite el último valor infinitamente al terminar (ej: `[30, 45, 60]`).
+- **ConstantGenerator**: Devuelve siempre el mismo valor (legado, ahora en desuso en la UI principal).
 - **UniformGenerator**: Genera un número aleatorio con distribución uniforme usando `min + Math.random() * (max - min)`.
 - **ExponentialGenerator**: Genera un número aleatorio con distribución exponencial usando `-mean * Math.log(Math.random())`.
 
@@ -178,8 +184,10 @@ constructor(config, flags, initialState = {})
 **Configuración (config):**
 - `maxTime`: Duración total de simulación en segundos
 - `startTime`: Hora de inicio en formato absoluto (ej: 28800 = 08:00:00)
-- `arrivalInterval`: Intervalo entre llegadas (número, lista "10,20,30", o constante)
-- `serviceTime`: Tiempo de servicio por cliente
+- `topology`: Topología del sistema (SINGLE_QUEUE, ISOLATED, CHAINED)
+- `numServers`: Cantidad de servidores instanciados
+- `arrivalInterval`: Rango de intervalo entre llegadas (ej: "30-60")
+- `serviceTime`: Rango de tiempo de servicio por cliente (ej: "20-40")
 - `workTime`: Duración del período de trabajo (para ciclos)
 - `restTime`: Duración del período de descanso
 - `maxWaitTime`: Tiempo máximo de espera antes de abandono (puede ser Infinity)
@@ -289,11 +297,9 @@ El componente `<CheckpointsModal>` visualiza este arreglo como tarjetas estilo g
 
 ## 5. Sistema de Generación de Valores
 
-El sistema utiliza funciones auxiliares para generar valores de tiempo mediante Clases especializadas (detalladas en el punto 4.2). En la Interfaz de Usuario el comportamiento se mapea de la siguiente forma:
+El sistema utiliza funciones auxiliares para generar valores de tiempo mediante Clases especializadas (detalladas en el punto 4.2). En la Interfaz de Usuario el comportamiento se estandarizó para utilizar rangos:
 
-- **"45"**: Se procesa como constante (`ConstantGenerator`).
-- **"30, 45, 60"**: Se procesa como lista (`ListGenerator`).
-- **"30 - 60"**: Se procesa como rango Uniforme o Exponencial dependiendo del Checkbox seleccionado.
+- **"30 - 60"**: Se procesa como rango Uniforme o Exponencial dependiendo del Checkbox seleccionado bajo el input.
 
 ---
 
@@ -312,7 +318,7 @@ El sistema utiliza funciones auxiliares para generar valores de tiempo mediante 
 |-------|--------------|
 | Intervalo llegada | `arrivalInterval` - Tiempo entre llegadas |
 
-Formato: número fijo ("45"), lista ("30,45,60"), o rango ("30-60")
+Formato: Rango estandarizado (Uniforme o Exponencial, ej: "30 - 60").
 
 ### 6.3 Sección ΔtS (Servicio)
 
@@ -487,8 +493,8 @@ const [currentState, setCurrentState] = useState(null); // Snapshot extraído de
 - **VIP**: Cliente con prioridad alta
 - **Reneging**: Abandono por timeout
 - **Cola M/M/1**: Markoviana llegada, Markoviana servicio, 1 servidor
-- **parseArrayInput**: Función que convierte input del usuario (número, lista, rango) a formato interno
-- **getNextValue**: Función que genera el siguiente valor de tiempo según el tipo de array
+- **parseArrayInput**: Función que convierte input del usuario a formato interno de rango
+- **getNextValue**: Función que genera el siguiente valor de tiempo
 
 ---
 
@@ -529,14 +535,10 @@ import TimeField from './components/TimeField';
 ```
 
 **Modos de entrada:**
-- **Constante**: `45` → siempre usa ese valor
-- **Lista**: `30,45,60` → recorre valores en orden
 - **Rango Uniforme**: `30 - 60` → valor aleatorio entre 30 y 60
 - **Rango Exponencial**: `30 - 60` con selector "Exponencial" → distribución exponencial con media 45
 
 **Indicadores visuales:**
-- Azul: Constante
-- Verde: Lista
 - Naranja: Rango Uniforme
 - Violeta: Rango Exponencial
 - Rojo: Error de formato
@@ -565,6 +567,23 @@ const label = getModeLabel(parsed);
 
 ## 15. Changelog - Actualizaciones Recientes
 
+### v3.0 - Topologías, Múltiples Servidores y Pruebas Unitarias
+
+**Fecha:** Mayo 2026
+
+#### Nuevas Funcionalidades:
+1. **Soporte Multi-Servidor y Topologías** (`SystemTopology`)
+   - **Cola Única:** Múltiples servidores atendiendo una sola cola global.
+   - **Aislados:** Los clientes llegan a sistemas independientes.
+   - **Encadenados:** Los servidores actúan como etapas sucesivas.
+2. **Tabla de Simulación Avanzada (UI)**
+   - Diseño expandible dinámico (se ensancha a 100vw si hay más de 9 columnas).
+   - Desglose adaptativo de servidores: La columna "Estado P.S." y "Fin Servicio" se dividen en sub-columnas `S1`, `S2`, etc. automáticamente.
+   - Colores semánticos para el estado de los servidores (Verde, Gris, Ámbar).
+   - Columna "Acción" controlada por un botón Toggle (👁) para no saturar la vista principal.
+3. **Pruebas Unitarias**
+   - Integración de `Vitest` con la suite `Simulator.test.js` para validar la integridad del motor frente a refactorizaciones.
+
 ### v2.0 - Integración de Generadores y Zona de Seguridad
 
 **Fecha:** Abril 2026
@@ -590,10 +609,7 @@ const label = getModeLabel(parsed);
    - Al iniciar descanso mientras el servidor está BUSY, ahora se elimina el evento `SERVICE_END` de la FEL
    - Al regresar, se restaura el cliente y el tiempo restante
 
-2. **ListGenerator desde string**
-   - El constructor del Simulator detecta si el valor contiene comas y crea `ListGenerator` automáticamente
-
-3. **Concatenación de strings**
+2. **Concatenación de strings**
    - Los valores de config ahora se convierten a número para evitar concatenación `"45" + 28800 = "4528800"`
 
 #### Estructura del Constructor:

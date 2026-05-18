@@ -1,6 +1,6 @@
 # EventMaster - Simulador de Eventos Discretos
 
-Simulador visual académico de teoría de colas para sistemas de atención al cliente (M/M/1). Implementa el método de simulación de eventos discretos (DES) para modelar la llegada de clientes, el servicio y diversas configuraciones avanzadas.
+Simulador visual académico de teoría de colas para sistemas de atención al cliente (modelos M/M/1 a M/M/S). Implementa el método de simulación de eventos discretos (DES) para modelar la llegada de clientes, el servicio, y diversas configuraciones avanzadas incluyendo topologías de sistema, múltiples servidores y abandono de clientes.
 
 ## Stack Tecnológico
 
@@ -8,6 +8,7 @@ Simulador visual académico de teoría de colas para sistemas de atención al cl
 - **Build:** Vite
 - **Lenguaje:** JavaScript ES6+
 - **Estilos:** CSS3
+- **Testing:** Vitest
 
 ## Instalación y Uso
 

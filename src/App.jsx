@@ -279,19 +279,28 @@ function App() {
           formatTime={formatTime} 
         />
 
-        <section className="results-section">
-          <div className="card">
-            <h2>📊 Tabla de Simulación de Eventos Discretos</h2>
-            {!currentState || currentState.history.length === 0 ? (
-              <p className="empty">Inicialice y ejecute la simulación</p>
-            ) : (
-              <AdvancedTable 
-                history={currentState.history} 
-                flags={flags}
-              />
-            )}
-          </div>
-        </section>
+        {(() => {
+          const ns = parseInt(config.numServers) || 1;
+          const colCount = 5 + ns * 2
+            + (flags.hasServerBreaks ? 3 : 0)
+            + (flags.hasClientAbandonment ? 4 : 0);
+          const expanded = colCount > 9;
+          return (
+            <section className={`results-section${expanded ? ' results-expanded' : ''}`}>
+              <div className="card">
+                <h2>📊 Tabla de Simulación de Eventos Discretos</h2>
+                {!currentState || currentState.history.length === 0 ? (
+                  <p className="empty">Inicialice y ejecute la simulación</p>
+                ) : (
+                  <AdvancedTable 
+                    history={currentState.history} 
+                    flags={flags}
+                  />
+                )}
+              </div>
+            </section>
+          );
+        })()}
       </main>
 
       <CheckpointsModal 

@@ -492,6 +492,8 @@ export class Simulator {
       case EventType.ABANDONMENT: this.#handleAbandonment(event); break;
     }
 
+    this.#evaluateCheckpoints();
+
     return true;
   }
 
@@ -504,13 +506,42 @@ export class Simulator {
         id: s.id,
         state: s.state,
         clientId: s.clientInService?.id,
-        present: s.present
+        present: s.present,
+        nextBreakTime: s.nextBreakTime,
+        nextWorkTime: s.nextWorkTime
       })),
       queueLength: this.queues.default.length + this.queues.vip.length,
       vipQueueLength: this.queues.vip.length,
       commonQueueLength: this.queues.default.length,
+      queueClients: [...this.queues.vip, ...this.queues.default].map(c => ({ ...c })),
+      fel: this.fel.map(e => ({ ...e })),
       action
     });
+  }
+
+  addCheckpoint(name, condition, isEventBased = false) {
+    this.checkpoints.push({ name, condition, isEventBased, triggered: false });
+  }
+
+  #evaluateCheckpoints() {
+    for (const cp of this.checkpoints) {
+      if (cp.isEventBased || !cp.triggered) {
+        if (cp.condition(this)) {
+          this.checkpointSnapshots.push({
+            name: cp.name,
+            time: this.clock,
+            stats: { ...this.stats },
+            queueLength: this.queues.default.length + this.queues.vip.length,
+            serverState: this.servers.length > 1 
+              ? this.servers.map(s => s.state === 'OCUPADO' ? '1' : s.state === 'AUSENTE' ? 'A' : '0').join(' | ') 
+              : this.servers[0].state
+          });
+          if (!cp.isEventBased) {
+            cp.triggered = true;
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -544,6 +575,7 @@ export class Simulator {
       queues: { ...this.queues },
       history: [...this.history],
       stats: { ...this.stats },
+      checkpoints: [...this.checkpointSnapshots],
       isFinished: this.isFinished()
     };
   }
