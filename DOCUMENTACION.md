@@ -221,8 +221,8 @@ constructor(config, flags, initialState = {})
 | `#scheduleNextArrival()` | Programa la siguiente llegada |
 | `#handleServiceEnd()` | Procesa fin de servicio |
 | `#selectNextClient()` | Selecciona siguiente cliente (VIP primero si aplica) |
-| `#handleServerBreakStart()` | Inicia período de descanso (elimina evento SERVICE_END fantasma) |
-| `#handleServerBreakEnd()` | Finaliza descanso ( restaura cliente si había servicio pausado) |
+| `#handleServerBreakStart()` | Inicia período de descanso (elimina SERVICE_END fantasma, limpia nextBreakTime y actualiza estado del servidor antes de guardar historial) |
+| `#handleServerBreakEnd()` | Finaliza descanso (restaura cliente si estaba pausado y programa el siguiente ciclo de trabajo/descanso antes de guardar historial) |
 | `#handleEnterSZ()` | Zona de Seguridad: cliente entra a la zona |
 | `#handleArrivalPS()` | Zona de Seguridad: cliente llega al punto de servicio |
 | `#getTotalQueue()` | Devuelve tamaño total de cola |
@@ -291,7 +291,7 @@ for(let i=1; i<=totalTriggers; i++) {
 }
 ```
 
-El componente `<CheckpointsModal>` visualiza este arreglo como tarjetas estilo galería, donde el usuario puede ver los abandonos, clientes en cola, e incluso el último evento responsable de la captura.
+El componente `<CheckpointsModal>` visualiza este arreglo como tarjetas estilo galería con numeración secuencial (`#1`, `#2`, etc.) según el orden cronológico en que se tomaron las capturas, donde el usuario puede ver los abandonos, clientes en cola, e incluso el último evento responsable de la captura.
 
 ---
 
@@ -566,6 +566,16 @@ const label = getModeLabel(parsed);
 ---
 
 ## 15. Changelog - Actualizaciones Recientes
+
+### v3.1 - Corrección de Ciclos de Descanso y Numeración de Checkpoints
+
+**Fecha:** Mayo 2026
+
+#### Mejoras y Correcciones:
+1. **Mapeo Dinámico y Unidades en Stats:** Se corrigió el resumen final de la simulación para mostrar el tiempo transcurrido en minutos en lugar de segundos, y se adaptaron las etiquetas para utilizar el vocabulario dinámico de cada preset académico.
+2. **Ciclos de Descanso Infinitos:** Se solucionó un bug en `Simulator.js` donde `server.nextBreakTime` no se limpiaba tras iniciar el descanso, impidiendo que se programaran descansos subsiguientes. Ahora se simulan infinitos descansos de forma cíclica y fluida.
+3. **Sincronización en Tiempo Real de la FEL y Presencia:** Se reordenaron las operaciones en los manejadores de eventos `#handleServerBreakStart` y `#handleServerBreakEnd` para asegurar que el estado (`present`, `state`, `nextBreakTime`, `nextWorkTime`) se actualice por completo antes de registrar la instantánea en el historial. Esto permite que la fila de la tabla correspondiente al evento muestre los valores correctos de forma síncrona.
+4. **Numeración en Galería de Fotos (Checkpoints):** Se añadió numeración secuencial (`#1`, `#2`, etc.) en el título de las tarjetas del modal de checkpoints para facilitar el seguimiento cronológico de las capturas del sistema.
 
 ### v3.0 - Topologías, Múltiples Servidores y Pruebas Unitarias
 

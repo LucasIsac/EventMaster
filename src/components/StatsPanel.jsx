@@ -10,7 +10,7 @@ export function StatBox({ label, value, color, icon }) {
   );
 }
 
-export function StatsPanel({ currentState, flags, formatTime }) {
+export function StatsPanel({ currentState, flags, formatTime, vocab }) {
   const isFinished = currentState?.isFinished;
   
   const calculateUtilization = () => {
@@ -49,12 +49,12 @@ export function StatsPanel({ currentState, flags, formatTime }) {
           <h3>📋 Conclusiones Finales</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
             <div>
-              <p><strong>Resumen en:</strong> {Math.floor(currentState.clock)} minutos</p>
-              <p><strong>Total que llegaron:</strong> {currentState.stats.totalArrivals} piezas</p>
+              <p><strong>Resumen en:</strong> {Math.floor(currentState.clock / 60)} minutos</p>
+              <p><strong>Total que llegaron:</strong> {currentState.stats.totalArrivals} {(vocab?.client || 'clientes').toLowerCase()}</p>
             </div>
             <div>
-              <p><strong>Piezas Procesadas:</strong> {currentState.stats.clientsServed}</p>
-              <p><strong>Piezas Desviadas:</strong> {currentState.stats.clientsAbandoned}</p>
+              <p><strong>{vocab?.served || 'Atendidos'}:</strong> {currentState.stats.clientsServed}</p>
+              <p><strong>{vocab?.abandon || 'Abandonados'}:</strong> {currentState.stats.clientsAbandoned}</p>
             </div>
           </div>
         </div>

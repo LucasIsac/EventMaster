@@ -446,8 +446,15 @@ export class Simulator {
     server.updateBusyTime(this.clock);
     this.stats.workCycles++;
     server.present = false;
+    server.nextBreakTime = null;
 
-    if (server.state === ServerState.BUSY) {
+    const oldState = server.state;
+    server.setState(ServerState.BREAK, this.clock);
+    const breakDuration = this.generators.breakDuration.next();
+    server.nextWorkTime = this.clock + breakDuration;
+    this.fel.push(createEvent(server.nextWorkTime, EventType.SERVER_BREAK_END, { serverId: server.id }));
+
+    if (oldState === ServerState.BUSY) {
       server.pausedServiceRemaining = server.serviceEndTime - this.clock;
       server.pausedClient = server.clientInService;
       this.fel = this.fel.filter(e => !(e.type === EventType.SERVICE_END && e.data.serverId === server.id));
@@ -455,11 +462,6 @@ export class Simulator {
     } else {
       this.#recordHistory(EventType.SERVER_BREAK_START, `S${server.id} sale (LIBRE)`);
     }
-
-    server.setState(ServerState.BREAK, this.clock);
-    const breakDuration = this.generators.breakDuration.next();
-    server.nextWorkTime = this.clock + breakDuration;
-    this.fel.push(createEvent(server.nextWorkTime, EventType.SERVER_BREAK_END, { serverId: server.id }));
   }
 
   #handleServerBreakEnd(event) {
@@ -469,6 +471,8 @@ export class Simulator {
     this.stats.restCycles++;
     server.present = true;
     server.nextWorkTime = null;
+
+    this.#scheduleWorkCycle(server);
 
     if (server.pausedClient) {
       server.setState(ServerState.BUSY, this.clock);
@@ -482,8 +486,6 @@ export class Simulator {
       this.#selectNextClientForServer(server);
       this.#recordHistory(EventType.SERVER_BREAK_END, `S${server.id} regresa`);
     }
-    
-    this.#scheduleWorkCycle(server);
   }
 
   #handleAbandonment(event) {

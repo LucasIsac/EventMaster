@@ -16,7 +16,7 @@ export function CheckpointsModal({ isOpen, onClose, checkpoints, formatTime, sta
               {checkpoints.map((cp, i) => (
                 <div key={i} className="checkpoint-card">
                   <div className="checkpoint-header">
-                    <h4>{cp.name}</h4>
+                    <h4>#{i + 1} - {cp.name}</h4>
                     <span className="checkpoint-time">{formatTime(cp.time - startTime, startTime)}</span>
                   </div>
                   <div className="checkpoint-details">

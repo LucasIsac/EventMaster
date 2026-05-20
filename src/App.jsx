@@ -271,6 +271,7 @@ function App() {
                     history={currentState.history} 
                     flags={flags}
                     config={config}
+                    vocab={vocab}
                   />
                 )}
               </div>
