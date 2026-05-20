@@ -606,6 +606,17 @@ kbd {
   color: var(--text-light);
 }
 
+.advanced-table .th-graphic {
+  background: #334155 !important;
+}
+
+.advanced-table .td-graphic {
+  font-family: monospace;
+  white-space: nowrap;
+  text-align: left;
+  min-width: 100px;
+}
+
 .advanced-table .highlight-origin {
   background: #fef3c7 !important;
   font-weight: 700;
