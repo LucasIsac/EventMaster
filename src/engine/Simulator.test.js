@@ -38,8 +38,8 @@ describe('Simulator Engine Tests', () => {
     };
     const sim = new Simulator(baseConfig, noBreaks, initialState);
     
-    // Al inicio debe haber 5 en cola
-    expect(sim.history[0].queueLength).toBe(5);
+    // Al inicio debe haber 4 en cola (1 pasó a servicio inmediatamente)
+    expect(sim.history[0].queueLength).toBe(4);
     
     sim.run();
     // Deben haberse atendido los 5 iniciales + los que llegaron después
@@ -85,5 +85,27 @@ describe('Simulator Engine Tests', () => {
     
     expect(sim.stats.abandonmentsFirstHour).toBeGreaterThan(0);
     expect(sim.stats.clientsAbandoned).toBeGreaterThan(sim.stats.abandonmentsFirstHour);
+  });
+
+  it('should process immediate abandonment (Guia 4 Ej 3)', () => {
+    const config = { ...baseConfig, arrivalInterval: '10', serviceTime: '100', maxWaitTime: '0' };
+    const sim = new Simulator(config, { ...noBreaks, hasClientAbandonment: true });
+    
+    sim.run();
+    
+    // C1 llega y se atiende. Siguientes llegan mientras S1 está ocupado y como maxWaitTime=0, abandonan.
+    expect(sim.stats.clientsAbandoned).toBeGreaterThan(0);
+  });
+
+  it('should support disableArrivals and process only initial queue (Guia 4 Ej 4)', () => {
+    const config = { ...baseConfig, serviceTime: '10' };
+    const initialState = { clientsInQueue: 6, initialWaitTime: 0, serverBusy: false };
+    const sim = new Simulator(config, { ...noBreaks, disableArrivals: true }, initialState);
+    
+    sim.run();
+    
+    expect(sim.stats.clientsServed).toBe(6);
+    expect(sim.stats.totalArrivals).toBe(0);
+    expect(sim.history.length).toBeGreaterThan(0);
   });
 });

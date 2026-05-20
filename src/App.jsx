@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Simulator, formatTime } from './engine/Simulator';
 import { ConfigPanel } from './components/ConfigPanel';
+import { academicPresets } from './presets';
 import { ControlPanel } from './components/ControlPanel';
 import { StatsPanel } from './components/StatsPanel';
 import { AdvancedTable } from './components/AdvancedTable';
@@ -8,33 +9,11 @@ import { CheckpointsModal } from './components/CheckpointsModal';
 import './App.css';
 
 function App() {
-  const [config, setConfig] = useState({
-    maxTime: 3600, // 1 hora de simulación
-    startTime: 28800, // 08:00:00
-    arrivalInterval: '60 - 120',
-    serviceTime: '45 - 90',
-    workTime: '600 - 1200',
-    restTime: '60 - 180',
-    maxWaitTime: '600', // 10 min por defecto
-    travelTime: '0',
-    topology: 'COLA_UNICA',
-    numServers: 1
-  });
-  
-  const [flags, setFlags] = useState({
-    hasServerBreaks: true,
-    hasClientAbandonment: true,
-    hasPriority: false,
-    hasSecurityZone: false
-  });
-  
-  const [initialState, setInitialState] = useState({
-    clientsInQueue: 0,
-    vipClientsInQueue: 0,
-    initialWaitTime: 0,
-    serverBusy: false,
-    busyUntil: 0
-  });
+  const [activePreset, setActivePreset] = useState('default');
+  const [config, setConfig] = useState(academicPresets.default.config);
+  const [flags, setFlags] = useState(academicPresets.default.flags);
+  const [initialState, setInitialState] = useState(academicPresets.default.initialState);
+  const [vocab, setVocab] = useState(academicPresets.default.vocab);
   
   // Referencias al motor de simulación y el estado actual capturado
   const [simulator, setSimulator] = useState(null);
@@ -42,9 +21,20 @@ function App() {
   const [isRunning, setIsRunning] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
   const [speed, setSpeed] = useState(100);
-  const [checkpointRules, setCheckpointRules] = useState([]);
+  const [checkpointRules, setCheckpointRules] = useState(academicPresets.default.checkpointRules);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const intervalRef = useRef(null);
+
+  const applyPreset = useCallback((presetId) => {
+    const preset = academicPresets[presetId];
+    if (!preset) return;
+    setActivePreset(presetId);
+    setConfig(preset.config);
+    setFlags(preset.flags);
+    setInitialState(preset.initialState);
+    setCheckpointRules(preset.checkpointRules);
+    setVocab(preset.vocab);
+  }, []);
 
   /**
    * Inicializa una nueva instancia del simulador con la configuración actual.
@@ -254,6 +244,8 @@ function App() {
           checkpointRules={checkpointRules}
           setCheckpointRules={setCheckpointRules}
           generateRandomScenario={generateRandomScenario}
+          activePreset={activePreset}
+          applyPreset={applyPreset}
         />
 
         <ControlPanel 
@@ -277,6 +269,7 @@ function App() {
           flags={flags} 
           calculateUtilization={calculateUtilization} 
           formatTime={formatTime} 
+          vocab={vocab}
         />
 
         {(() => {
@@ -295,6 +288,7 @@ function App() {
                   <AdvancedTable 
                     history={currentState.history} 
                     flags={flags}
+                    config={config}
                   />
                 )}
               </div>

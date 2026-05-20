@@ -10,7 +10,7 @@ export function StatBox({ label, value, color, icon }) {
   );
 }
 
-export function StatsPanel({ currentState, flags, calculateUtilization, formatTime }) {
+export function StatsPanel({ currentState, flags, calculateUtilization, formatTime, vocab }) {
   const isFinished = currentState?.isFinished;
   
   return (
@@ -30,8 +30,8 @@ export function StatsPanel({ currentState, flags, calculateUtilization, formatTi
         ))}
 
         <StatBox label="Cola Total" value={currentState?.queues.default.length + currentState?.queues.vip.length || 0} color="purple" />
-        <StatBox label="Atend. Total" value={currentState?.stats.clientsServed || 0} color="blue" />
-        <StatBox label="Aband. Total" value={currentState?.stats.clientsAbandoned || 0} color="red" />
+        <StatBox label={`${vocab?.served || 'Atend.'} Total`} value={currentState?.stats.clientsServed || 0} color="blue" />
+        <StatBox label={`${vocab?.abandon || 'Aband.'} Total`} value={currentState?.stats.clientsAbandoned || 0} color="red" />
         
         {/* Nuevas Métricas Solicitadas */}
         <StatBox label="Aband. 1ra h" value={currentState?.stats.abandonmentsFirstHour || 0} color="red" />

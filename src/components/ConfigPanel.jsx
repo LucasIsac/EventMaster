@@ -3,18 +3,32 @@ import TimeInput from './TimeInput';
 import TimeField from './TimeField';
 import { CheckpointsConfig } from './CheckpointsConfig';
 
+import { academicPresets } from '../presets';
+
 export function ConfigPanel({ 
   config, flags, initialState, updateConfig, updateFlags, updateInitialState, 
-  checkpointRules, setCheckpointRules, generateRandomScenario 
+  checkpointRules, setCheckpointRules, generateRandomScenario,
+  activePreset, applyPreset
 }) {
   return (
     <section className="config-section">
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <h2 style={{ margin: 0 }}>⚙️ Configuración</h2>
-          <button className="btn btn-secondary" onClick={generateRandomScenario} style={{ padding: '8px 16px', fontSize: '0.8rem' }}>
-            🎲 Escenario Aleatorio
-          </button>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <select 
+              value={activePreset} 
+              onChange={(e) => applyPreset(e.target.value)}
+              style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border)' }}
+            >
+              {Object.entries(academicPresets).map(([id, preset]) => (
+                <option key={id} value={id}>{preset.label}</option>
+              ))}
+            </select>
+            <button className="btn btn-secondary" onClick={generateRandomScenario} style={{ padding: '8px 16px', fontSize: '0.8rem' }}>
+              🎲 Aleatorio
+            </button>
+          </div>
         </div>
         <div className="config-grid">
           <div className="config-group">

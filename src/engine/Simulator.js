@@ -81,6 +81,7 @@ class Server {
     this.clientsServed = 0;
     this.busyTime = 0;
     this.lastStateChange = 0;
+    this.queue = [];
   }
 
   updateBusyTime(currentTime) {
@@ -103,6 +104,7 @@ export class Simulator {
   constructor(config, flags, initialState = {}, generators = {}) {
     this.config = { ...config };
     this.flags = { ...flags };
+    this.disableArrivals = flags.disableArrivals || false;
     this.topology = config.topology || SystemTopology.SINGLE_QUEUE;
     this.numServers = parseInt(config.numServers) || 1;
 
@@ -132,9 +134,15 @@ export class Simulator {
       }
     };
 
+    const arrIntervals = Array.isArray(this.config.arrivalInterval) ? this.config.arrivalInterval : [this.config.arrivalInterval];
+    const srvIntervals = Array.isArray(this.config.serviceTime) ? this.config.serviceTime : [this.config.serviceTime];
+
+    this.arrivalGenerators = arrIntervals.map((val) => getGenerator(val || this.config.arrivalInterval, this.config.arrivalDistType || 'uniform'));
+    this.serviceGenerators = srvIntervals.map((val) => getGenerator(val || this.config.serviceTime, this.config.serviceDistType || 'uniform'));
+
     this.generators = {
-      arrival: generators.arrival || getGenerator(this.config.arrivalInterval, this.config.arrivalDistType || 'uniform'),
-      service: generators.service || getGenerator(this.config.serviceTime, this.config.serviceDistType || 'uniform'),
+      arrival: this.arrivalGenerators[0],
+      service: this.serviceGenerators[0],
       breakDuration: generators.breakDuration || getGenerator(this.config.restTime, this.config.restDistType || 'uniform'),
       travel: generators.travel || getGenerator(this.config.travelTime, this.config.travelDistType || 'uniform'),
       workDuration: getGenerator(this.config.workTime, this.config.workDistType || 'uniform'),
@@ -195,15 +203,23 @@ export class Simulator {
     const waitTime = parseFloat(initialWaitTime) || 0;
 
     // Poblar colas iniciales con clientes que ya llevan tiempo esperando
+    const pushToQueue = (client, isVip) => {
+      if (this.topology === SystemTopology.SINGLE_QUEUE) {
+        if (isVip) this.queues.vip.push(client);
+        else this.queues.default.push(client);
+      } else {
+        this.servers[0].queue.push(client);
+      }
+      this.#scheduleAbandonment(client);
+    };
+
     for (let i = 0; i < (vipClientsInQueue || 0); i++) {
       const client = this.#createClient(this.clock, true, waitTime);
-      this.queues.vip.push(client);
-      this.#scheduleAbandonment(client);
+      pushToQueue(client, true);
     }
     for (let i = 0; i < (clientsInQueue || 0); i++) {
       const client = this.#createClient(this.clock, false, waitTime);
-      this.queues.default.push(client);
-      this.#scheduleAbandonment(client);
+      pushToQueue(client, false);
     }
 
     // Estado inicial de servidores
@@ -223,29 +239,44 @@ export class Simulator {
     
     this.servers.forEach(server => {
       this.#scheduleWorkCycle(server);
+      if (server.state === ServerState.IDLE) {
+        this.#selectNextClientForServer(server);
+      }
     });
 
     this.#recordHistory('INICIO', 'Estado inicial');
   }
 
   #scheduleFirstArrivals(serverBusy, busyUntil) {
+    if (this.disableArrivals) return;
     const busyUntilAbs = this.config.startTime + (parseFloat(busyUntil) || 0);
     
-    if (this.flags.hasPriority && !this.firstVipArrivalScheduled) {
-      this.firstVipArrivalScheduled = true;
-      let time = this.clock + this.generators.arrival.next();
-      if (serverBusy && time < busyUntilAbs) time = busyUntilAbs + this.generators.arrival.next();
-      if (time <= this.config.startTime + this.config.maxTime) {
-        this.fel.push(createEvent(time, EventType.ARRIVAL_VIP, {}));
+    if (this.topology === SystemTopology.ISOLATED) {
+      for (let i = 0; i < this.numServers; i++) {
+        const gen = this.arrivalGenerators[i] || this.arrivalGenerators[0];
+        let time = this.clock + gen.next();
+        if (serverBusy && i === 0 && time < busyUntilAbs) time = busyUntilAbs + gen.next();
+        if (time <= this.config.startTime + this.config.maxTime) {
+          this.fel.push(createEvent(time, EventType.ARRIVAL, { serverId: this.servers[i].id }));
+        }
       }
-    }
+    } else {
+      if (this.flags.hasPriority && !this.firstVipArrivalScheduled) {
+        this.firstVipArrivalScheduled = true;
+        let time = this.clock + this.generators.arrival.next();
+        if (serverBusy && time < busyUntilAbs) time = busyUntilAbs + this.generators.arrival.next();
+        if (time <= this.config.startTime + this.config.maxTime) {
+          this.fel.push(createEvent(time, EventType.ARRIVAL_VIP, {}));
+        }
+      }
 
-    if (!this.firstArrivalScheduled) {
-      this.firstArrivalScheduled = true;
-      let time = this.clock + this.generators.arrival.next();
-      if (serverBusy && time < busyUntilAbs) time = busyUntilAbs + this.generators.arrival.next();
-      if (time <= this.config.startTime + this.config.maxTime) {
-        this.fel.push(createEvent(time, EventType.ARRIVAL, {}));
+      if (!this.firstArrivalScheduled) {
+        this.firstArrivalScheduled = true;
+        let time = this.clock + this.generators.arrival.next();
+        if (serverBusy && time < busyUntilAbs) time = busyUntilAbs + this.generators.arrival.next();
+        if (time <= this.config.startTime + this.config.maxTime) {
+          this.fel.push(createEvent(time, EventType.ARRIVAL, {}));
+        }
       }
     }
   }
@@ -261,12 +292,23 @@ export class Simulator {
     }
   }
 
-  #scheduleNextArrival(isVip = false) {
+  #scheduleNextArrival(isVip = false, serverId = null) {
+    if (this.disableArrivals) return;
     const type = isVip ? EventType.ARRIVAL_VIP : EventType.ARRIVAL;
-    if (!this.fel.some(e => e.type === type)) {
-      const time = this.clock + this.generators.arrival.next();
+    
+    if (this.topology === SystemTopology.ISOLATED && serverId !== null) {
+      const serverIdx = serverId - 1;
+      const gen = this.arrivalGenerators[serverIdx] || this.arrivalGenerators[0];
+      const time = this.clock + gen.next();
       if (time <= this.config.startTime + this.config.maxTime) {
-        this.fel.push(createEvent(time, type, {}));
+        this.fel.push(createEvent(time, type, { serverId }));
+      }
+    } else {
+      if (!this.fel.some(e => e.type === type)) {
+        const time = this.clock + this.generators.arrival.next();
+        if (time <= this.config.startTime + this.config.maxTime) {
+          this.fel.push(createEvent(time, type, {}));
+        }
       }
     }
   }
@@ -274,13 +316,12 @@ export class Simulator {
   #scheduleAbandonment(client) {
     if (this.flags.hasClientAbandonment && client.patienceTime < Infinity) {
       const time = client.arrivalTime + client.patienceTime;
-      // Solo programar si el abandono ocurre después del tiempo actual (para el vector inicial)
-      if (time > this.clock) {
+      // Programar abandono
+      if (time >= this.clock) {
         this.fel.push(createEvent(time, EventType.ABANDONMENT, { clientId: client.id }));
       } else {
-        // Si ya debería haber abandonado según el vector inicial, lo manejamos inmediatamente?
-        // El profesor dijo: "arrancan con una Q de 100 y llevan 10s esperando". 
-        // Si la paciencia es 10min (600s), entonces el abandono es a los 590s desde t=0.
+        // Si ya debería haber abandonado según el vector inicial, lo sacamos en t=0
+        this.fel.push(createEvent(this.clock, EventType.ABANDONMENT, { clientId: client.id }));
       }
     }
   }
@@ -292,10 +333,11 @@ export class Simulator {
     );
   }
 
-  #handleArrival(isVip = false) {
+  #handleArrival(event, isVip = false) {
     this.stats.totalArrivals++;
+    const serverId = event?.data?.serverId || null;
     const client = this.#createClient(this.clock, isVip);
-    this.#scheduleNextArrival(isVip);
+    this.#scheduleNextArrival(isVip, serverId);
 
     // Lógica según topología
     if (this.topology === SystemTopology.SINGLE_QUEUE) {
@@ -312,16 +354,13 @@ export class Simulator {
         this.#recordHistory(isVip ? EventType.ARRIVAL_VIP : EventType.ARRIVAL, `C${client.id} llega -> cola`);
       }
     } else if (this.topology === SystemTopology.ISOLATED) {
-      // En aislados, el cliente va a un servidor específico (ej. aleatorio o round robin)
-      // Por simplicidad, asignamos al azar entre los disponibles
-      const targetId = Math.floor(Math.random() * this.numServers);
+      // En aislados, el cliente va a un servidor específico
+      const targetId = serverId ? serverId - 1 : Math.floor(Math.random() * this.numServers);
       const server = this.servers[targetId];
-      // Cada servidor tendría su propia cola, pero aquí usamos las globales para simplificar la vista
-      // (En una versión más compleja, Server tendría su propia queue)
       if (server.state === ServerState.IDLE && server.present) {
         this.#startService(server, client);
       } else {
-        this.queues.default.push(client); // Comparten vista de cola pero lógica es aislada
+        server.queue.push(client);
         this.#scheduleAbandonment(client);
       }
       this.#recordHistory(EventType.ARRIVAL, `C${client.id} llega a Sistema Aislado ${server.id}`);
@@ -331,7 +370,7 @@ export class Simulator {
       if (s1.state === ServerState.IDLE && s1.present) {
         this.#startService(s1, client);
       } else {
-        this.queues.default.push(client);
+        s1.queue.push(client);
         this.#scheduleAbandonment(client);
       }
       this.#recordHistory(EventType.ARRIVAL, `C${client.id} llega -> Etapa 1 (S1)`);
@@ -341,7 +380,8 @@ export class Simulator {
   #startService(server, client) {
     server.setState(ServerState.BUSY, this.clock);
     server.clientInService = client;
-    const duration = this.generators.service.next();
+    const gen = this.serviceGenerators[server.id - 1] || this.serviceGenerators[0];
+    const duration = gen.next();
     server.serviceEndTime = this.clock + duration;
     this.fel.push(createEvent(server.serviceEndTime, EventType.SERVICE_END, { serverId: server.id, clientId: client.id }));
   }
@@ -367,9 +407,7 @@ export class Simulator {
         this.#startService(nextServer, client);
       } else {
         // En chained real, habría una cola por etapa.
-        // Aquí simplificamos metiéndolo de nuevo a la cola general pero con stage avanzado
-        // (La lógica de selectNextClient debería filtrar por stage)
-        this.queues.default.push(client);
+        nextServer.queue.push(client);
       }
     } else {
       nextAction = `C${clientId} termina servicio y sale del sistema`;
@@ -388,15 +426,8 @@ export class Simulator {
 
     if (this.topology === SystemTopology.SINGLE_QUEUE) {
       nextClient = this.queues.vip.shift() || this.queues.default.shift();
-    } else if (this.topology === SystemTopology.CHAINED) {
-      // Busca el primer cliente en cola que esté esperando para ESTA etapa
-      const index = this.queues.default.findIndex(c => c.currentStage === server.id - 1);
-      if (index !== -1) {
-        nextClient = this.queues.default.splice(index, 1)[0];
-      }
     } else {
-      // Isolated: toma de la cola común (simplificado)
-      nextClient = this.queues.default.shift();
+      nextClient = server.queue.shift();
     }
 
     if (nextClient && server.present) {
@@ -457,13 +488,22 @@ export class Simulator {
 
   #handleAbandonment(event) {
     const { clientId } = event.data;
+    let client = null;
+    
     const findAndRemove = (queue) => {
       const idx = queue.findIndex(c => c.id === clientId);
       if (idx !== -1) return queue.splice(idx, 1)[0];
       return null;
     };
 
-    const client = findAndRemove(this.queues.vip) || findAndRemove(this.queues.default);
+    client = findAndRemove(this.queues.vip) || findAndRemove(this.queues.default);
+    if (!client) {
+      for (const server of this.servers) {
+        client = findAndRemove(server.queue);
+        if (client) break;
+      }
+    }
+
     if (client) {
       this.stats.clientsAbandoned++;
       if (this.clock - this.config.startTime <= 3600) {
@@ -484,8 +524,8 @@ export class Simulator {
     this.fel = this.fel.filter(e => e.id !== event.id);
 
     switch (event.type) {
-      case EventType.ARRIVAL: this.#handleArrival(false); break;
-      case EventType.ARRIVAL_VIP: this.#handleArrival(true); break;
+      case EventType.ARRIVAL: this.#handleArrival(event, false); break;
+      case EventType.ARRIVAL_VIP: this.#handleArrival(event, true); break;
       case EventType.SERVICE_END: this.#handleServiceEnd(event); break;
       case EventType.SERVER_BREAK_START: this.#handleServerBreakStart(event); break;
       case EventType.SERVER_BREAK_END: this.#handleServerBreakEnd(event); break;
@@ -498,6 +538,14 @@ export class Simulator {
   }
 
   #recordHistory(eventType, action) {
+    const totalQueueLength = this.topology === SystemTopology.SINGLE_QUEUE 
+      ? this.queues.default.length + this.queues.vip.length
+      : this.servers.reduce((sum, s) => sum + s.queue.length, 0);
+      
+    const allClients = this.topology === SystemTopology.SINGLE_QUEUE 
+      ? [...this.queues.vip, ...this.queues.default]
+      : this.servers.flatMap(s => s.queue);
+
     this.history.push({
       step: this.history.length + 1,
       time: this.clock,
@@ -508,12 +556,13 @@ export class Simulator {
         clientId: s.clientInService?.id,
         present: s.present,
         nextBreakTime: s.nextBreakTime,
-        nextWorkTime: s.nextWorkTime
+        nextWorkTime: s.nextWorkTime,
+        queue: [...s.queue]
       })),
-      queueLength: this.queues.default.length + this.queues.vip.length,
+      queueLength: totalQueueLength,
       vipQueueLength: this.queues.vip.length,
       commonQueueLength: this.queues.default.length,
-      queueClients: [...this.queues.vip, ...this.queues.default].map(c => ({ ...c })),
+      queueClients: allClients.map(c => ({ ...c })),
       fel: this.fel.map(e => ({ ...e })),
       action
     });
@@ -531,7 +580,7 @@ export class Simulator {
             name: cp.name,
             time: this.clock,
             stats: { ...this.stats },
-            queueLength: this.queues.default.length + this.queues.vip.length,
+            queueLength: this.topology === SystemTopology.SINGLE_QUEUE ? this.queues.default.length + this.queues.vip.length : this.servers.reduce((sum, s) => sum + s.queue.length, 0),
             serverState: this.servers.length > 1 
               ? this.servers.map(s => s.state === 'OCUPADO' ? '1' : s.state === 'AUSENTE' ? 'A' : '0').join(' | ') 
               : this.servers[0].state
