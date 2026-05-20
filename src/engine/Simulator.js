@@ -548,7 +548,14 @@ export class Simulator {
    * Ejecuta la simulación hasta el final.
    */
   run() {
-    while (this.step()) { }
+    const MAX_STEPS = 100000;
+    let steps = 0;
+    while (this.step()) {
+      if (++steps >= MAX_STEPS) {
+        console.warn('Simulation halted: max steps limit reached.');
+        break;
+      }
+    }
     return this.getResults();
   }
 
@@ -559,19 +566,31 @@ export class Simulator {
       stats: {
         ...this.stats,
         totalTime,
-        serverStats: this.servers.map(s => ({
-          id: s.id,
-          utilization: totalTime > 0 ? (s.busyTime / totalTime * 100).toFixed(1) : 0,
-          clientsServed: s.clientsServed
-        }))
+        serverStats: this.servers.map(s => {
+          let bTime = s.busyTime;
+          if (s.state === ServerState.BUSY) bTime += (this.clock - s.lastStateChange);
+          return {
+            id: s.id,
+            utilization: totalTime > 0 ? (bTime / totalTime * 100).toFixed(1) : 0,
+            clientsServed: s.clientsServed
+          };
+        })
       }
     };
   }
 
   getCurrentState() {
+    const totalTime = this.clock - this.config.startTime;
     return {
       clock: this.clock,
-      servers: this.servers.map(s => ({ ...s })),
+      servers: this.servers.map(s => {
+        let bTime = s.busyTime;
+        if (s.state === ServerState.BUSY) bTime += (this.clock - s.lastStateChange);
+        return { 
+          ...s, 
+          utilization: totalTime > 0 ? (bTime / totalTime * 100).toFixed(1) : 0 
+        };
+      }),
       queues: { ...this.queues },
       history: [...this.history],
       stats: { ...this.stats },

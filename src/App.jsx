@@ -181,24 +181,7 @@ function App() {
     });
   }, []);
 
-  /**
-   * Calcula el porcentaje de utilización del servidor.
-   */
-  const calculateUtilization = () => {
-    if (!currentState) return '0.0';
-    const totalTime = currentState.clock - config.startTime;
-    if (totalTime <= 0) return '0.0';
 
-    // Si es un rango, intentamos usar un valor medio para la estimación visual rápida
-    let svcTime = parseFloat(config.serviceTime);
-    if (String(config.serviceTime).includes(' - ')) {
-      const parts = String(config.serviceTime).split(' - ').map(parseFloat);
-      svcTime = (parts[0] + parts[1]) / 2;
-    }
-
-    const busyTime = currentState.stats.clientsServed * svcTime;
-    return (busyTime / totalTime * 100).toFixed(1);
-  };
 
   /**
    * Calcula el progreso de la simulación para la barra visual.
@@ -275,7 +258,6 @@ function App() {
         <StatsPanel 
           currentState={currentState} 
           flags={flags} 
-          calculateUtilization={calculateUtilization} 
           formatTime={formatTime} 
         />
 

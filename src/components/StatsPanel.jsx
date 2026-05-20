@@ -10,8 +10,14 @@ export function StatBox({ label, value, color, icon }) {
   );
 }
 
-export function StatsPanel({ currentState, flags, calculateUtilization, formatTime }) {
+export function StatsPanel({ currentState, flags, formatTime }) {
   const isFinished = currentState?.isFinished;
+  
+  const calculateUtilization = () => {
+    if (!currentState || currentState.servers.length === 0) return '0.0';
+    const totalUtil = currentState.servers.reduce((acc, s) => acc + parseFloat(s.utilization || 0), 0);
+    return (totalUtil / currentState.servers.length).toFixed(1);
+  };
   
   return (
     <section className="stats-section">
