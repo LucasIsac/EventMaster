@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 
 export function AdvancedTable({ history, flags, config, vocab }) {
-  const [showAction, setShowAction] = useState(false);
-
   const numServers = history.length > 0 ? history[0].servers.length : 1;
   const isMultiServer = numServers > 1;
   const topology = config?.topology || 'COLA_UNICA';
@@ -101,38 +99,35 @@ export function AdvancedTable({ history, flags, config, vocab }) {
 
   return (
     <div className="table-outer">
-      <div className="table-toolbar">
-        <button
-          className={`btn-toggle-action ${showAction ? 'active' : ''}`}
-          onClick={() => setShowAction(prev => !prev)}
-          title={showAction ? 'Ocultar columna de acción' : 'Mostrar columna de acción'}
-        >
-          <span className="toggle-icon">{showAction ? '👁' : '👁‍🗨'}</span>
-          <span>{showAction ? 'Ocultar Acción' : 'Mostrar Acción'}</span>
-        </button>
-      </div>
       <div className="table-wrapper">
         <table className="advanced-table">
           <thead>
             <tr>
-              <th rowSpan="2" className="th-num">#</th>
-              <th rowSpan="2" className="th-time">Hora Actual</th>
-              <th rowSpan="2">Evento</th>
-              {showAction && <th rowSpan="2" className="th-action">Acción</th>}
+              <th rowSpan="2" className="th-time">Hora actual</th>
+
+              {isIsolated ? (
+                <th colSpan={numServers} className="th-fel" style={{background: '#0ea5e9'}}>H. de prox. Lleg. de un cl. al sist p/recibir el serv:</th>
+              ) : (
+                <th rowSpan="2" className="th-fel" style={{background: '#0ea5e9'}}>H. de prox. Lleg. de un cl. al sist p/recibir el serv:</th>
+              )}
 
               {isMultiServer ? (
-                <th colSpan={numServers} className="th-server-group">Estado P.S.</th>
+                <th colSpan={numServers} className="th-fel" style={{background: '#38bdf8'}}>Hora de próx. Fin de Servicio</th>
               ) : (
-                <th rowSpan="2">Estado P.S.</th>
+                <th rowSpan="2" className="th-fel" style={{background: '#38bdf8'}}>Hora de próx. Fin de Servicio</th>
               )}
 
               {isSingleQueue ? (
-                <th rowSpan="2">Cola</th>
+                <th rowSpan="2">Cant. de clientes en cola</th>
               ) : (
-                <th colSpan={numServers} className="th-queue-group" style={{background: '#8b5cf6'}}>Colas</th>
+                <th colSpan={numServers} className="th-queue-group" style={{background: '#8b5cf6'}}>Cant. de clientes en cola de:</th>
               )}
 
-              <th colSpan={felColSpan} className="th-fel">FEL - Próximos Eventos</th>
+              {isMultiServer ? (
+                <th colSpan={numServers} className="th-server-group">Estado del PS</th>
+              ) : (
+                <th rowSpan="2">Estado del PS</th>
+              )}
 
               {flags.hasServerBreaks && (
                 <th colSpan={breaksColSpan} className="th-special">Servidor (Descansos)</th>
@@ -145,25 +140,23 @@ export function AdvancedTable({ history, flags, config, vocab }) {
                 </th>
               )}
 
-              <th rowSpan="2" className="th-graphic" style={{background: '#334155'}}>Gráficamente</th>
+              <th rowSpan="2" className="th-graphic" style={{background: '#334155'}}>ESQUEMAS DE ESTADOS DEL SISTEMA</th>
             </tr>
             <tr>
+              {isIsolated && Array.from({ length: numServers }, (_, i) => (
+                <th key={`fela-${i}`} className="th-fel" style={{background: '#0ea5e9'}}>S{i + 1}</th>
+              ))}
+
               {isMultiServer && Array.from({ length: numServers }, (_, i) => (
-                <th key={`ps-${i}`} className="th-server-sub">S{i + 1}</th>
+                <th key={`fel-${i}`} className="th-fel" style={{background: '#38bdf8'}}>PS{i + 1}</th>
               ))}
 
               {!isSingleQueue && Array.from({ length: numServers }, (_, i) => (
-                <th key={`q-${i}`} className="th-queue-sub" style={{background: '#a78bfa', fontSize: '0.75rem'}}>Q{i + 1}</th>
+                <th key={`q-${i}`} className="th-queue-sub" style={{background: '#a78bfa', fontSize: '0.75rem'}}>PS{i + 1}</th>
               ))}
 
-              {isIsolated ? Array.from({ length: numServers }, (_, i) => (
-                <th key={`fela-${i}`} className="th-fel">Lleg S{i + 1}</th>
-              )) : (
-                <th className="th-fel">Próx Llegada</th>
-              )}
-
-              {Array.from({ length: numServers }, (_, i) => (
-                <th key={`fel-${i}`} className="th-fel">Fin S{i + 1}</th>
+              {isMultiServer && Array.from({ length: numServers }, (_, i) => (
+                <th key={`ps-${i}`} className="th-server-sub">PS{i + 1}</th>
               ))}
 
               {flags.hasServerBreaks && isMultiServer ? (
@@ -200,37 +193,7 @@ export function AdvancedTable({ history, flags, config, vocab }) {
 
               return (
                 <tr key={i} className={i % 2 === 0 ? 'row-even' : 'row-odd'}>
-                  <td className="td-num">{entry.step}</td>
                   <td className="td-time">{formatTime(entry.time)}</td>
-                  <td className="td-event">
-                    <span className={`event-badge ${entry.eventType.toLowerCase().replace('_', '-')}`}>
-                      {entry.eventType}
-                    </span>
-                  </td>
-
-                  {showAction && (
-                    <td className="td-action">{entry.action}</td>
-                  )}
-
-                  {isMultiServer ? (
-                    entry.servers.map((s, si) => (
-                      <td key={`ps-${si}`} className={`td-state ${getServerStateCss(s)}`}>
-                        {getServerStateCode(s)}
-                      </td>
-                    ))
-                  ) : (
-                    <td className="td-state">
-                      {getServerStateCode(entry.servers[0])}
-                    </td>
-                  )}
-
-                  {isSingleQueue ? (
-                    <td className="td-queue">{entry.queueLength}</td>
-                  ) : (
-                    entry.servers.map((s, si) => (
-                      <td key={`q-${si}`} className="td-queue">{s.queue?.length || 0}</td>
-                    ))
-                  )}
 
                   {isIsolated ? (
                     felEvents.nextArrival.map((t, si) => (
@@ -244,11 +207,37 @@ export function AdvancedTable({ history, flags, config, vocab }) {
                     </td>
                   )}
 
-                  {felEvents.nextServiceEnds.map((t, si) => (
-                    <td key={`fel-${si}`} className={`td-fel ${origin === 'FIN_SERVICIO' ? 'highlight-origin' : ''}`}>
-                      {t ? formatTime(t) : '-'}
+                  {isMultiServer ? (
+                    felEvents.nextServiceEnds.map((t, si) => (
+                      <td key={`fel-${si}`} className={`td-fel ${origin === 'FIN_SERVICIO' ? 'highlight-origin' : ''}`}>
+                        {t ? formatTime(t) : '-'}
+                      </td>
+                    ))
+                  ) : (
+                    <td className={`td-fel ${origin === 'FIN_SERVICIO' ? 'highlight-origin' : ''}`}>
+                      {felEvents.nextServiceEnds[0] ? formatTime(felEvents.nextServiceEnds[0]) : '-'}
                     </td>
-                  ))}
+                  )}
+
+                  {isSingleQueue ? (
+                    <td className="td-queue">{entry.queueLength}</td>
+                  ) : (
+                    entry.servers.map((s, si) => (
+                      <td key={`q-${si}`} className="td-queue">{s.queue?.length || 0}</td>
+                    ))
+                  )}
+
+                  {isMultiServer ? (
+                    entry.servers.map((s, si) => (
+                      <td key={`ps-${si}`} className={`td-state ${getServerStateCss(s)}`}>
+                        {getServerStateCode(s)}
+                      </td>
+                    ))
+                  ) : (
+                    <td className="td-state">
+                      {getServerStateCode(entry.servers[0])}
+                    </td>
+                  )}
 
                   {flags.hasServerBreaks && isMultiServer ? (
                     entry.servers.map((s, si) => (

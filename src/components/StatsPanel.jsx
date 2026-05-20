@@ -43,17 +43,14 @@ export function StatsPanel({ currentState, flags, calculateUtilization, formatTi
           <h3>📋 Conclusiones Finales</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
             <div>
-              <p><strong>Eficiencia:</strong> La utilización promedio fue del {calculateUtilization()}%.</p>
-              <p><strong>Pérdida:</strong> Hubo {currentState.stats.clientsAbandoned} abandonos en total.</p>
+              <p><strong>Resumen en:</strong> {Math.floor(currentState.clock)} minutos</p>
+              <p><strong>Total que llegaron:</strong> {currentState.stats.totalArrivals} piezas</p>
             </div>
             <div>
-              <p><strong>Productividad:</strong> Se atendieron {currentState.stats.clientsServed} clientes.</p>
-              <p><strong>Ritmo:</strong> {currentState.stats.totalArrivals} llegadas totales al sistema.</p>
+              <p><strong>Piezas Procesadas:</strong> {currentState.stats.clientsServed}</p>
+              <p><strong>Piezas Desviadas:</strong> {currentState.stats.clientsAbandoned}</p>
             </div>
           </div>
-          <p style={{ marginTop: '10px', fontSize: '0.9rem', color: '#666' }}>
-            * Basado en {currentState.servers.length} servidor(es) bajo topología de sistema.
-          </p>
         </div>
       )}
 
