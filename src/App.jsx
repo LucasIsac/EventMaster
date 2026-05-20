@@ -70,6 +70,26 @@ function App() {
                  s.stats.clientsAbandoned > 0 && 
                  s.stats.clientsAbandoned % rule.value === 0;
         }, true);
+      } else if (rule.type === 'break_n') {
+        sim.addCheckpoint(rule.label, s => {
+          const lastEvent = s.history[s.history.length - 1];
+          return lastEvent && lastEvent.eventType === 'SALIDA_SERVIDOR' && s.stats.workCycles === rule.value;
+        }, false);
+      } else if (rule.type === 'break_end_n') {
+        sim.addCheckpoint(rule.label, s => {
+          const lastEvent = s.history[s.history.length - 1];
+          return lastEvent && lastEvent.eventType === 'LLEGADA_SERVIDOR' && s.stats.restCycles === rule.value;
+        }, false);
+      } else if (rule.type === 'served_n') {
+        sim.addCheckpoint(rule.label, s => {
+          const lastEvent = s.history[s.history.length - 1];
+          return lastEvent && lastEvent.eventType === 'FIN_SERVICIO' && s.stats.clientsServed === rule.value;
+        }, false);
+      } else if (rule.type === 'abandon_n') {
+        sim.addCheckpoint(rule.label, s => {
+          const lastEvent = s.history[s.history.length - 1];
+          return lastEvent && lastEvent.eventType === 'ABANDONO' && s.stats.clientsAbandoned === rule.value;
+        }, false);
       }
     });
 
@@ -184,27 +204,196 @@ function App() {
   };
 
   /**
-   * Exporta el historial de la simulación a un archivo CSV.
+   * Exporta el historial de la simulación a un archivo CSV, replicando la estructura de la tabla de la interfaz.
    */
   const exportResults = () => {
     if (!currentState || currentState.history.length === 0) return;
-    const csv = [
-      ['Paso', 'Hora', 'Evento', 'Estado PS', 'Cola', 'Atendidos', 'Abandonados'].join(','),
-      ...currentState.history.map(h => [
-        h.step,
-        formatTime(h.time),
-        h.eventType,
-        h.serverState === 'LIBRE' ? '0' : h.serverState === 'OCUPADO' ? '1' : 'A',
-        h.queueLength,
-        currentState.stats.clientsServed,
-        currentState.stats.clientsAbandoned
-      ].join(','))
-    ].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+
+    const history = currentState.history;
+    const numServers = history.length > 0 ? history[0].servers.length : 1;
+    const isMultiServer = numServers > 1;
+    const topology = config?.topology || 'COLA_UNICA';
+    const isSingleQueue = topology === 'COLA_UNICA';
+    const isIsolated = topology === 'AISLADOS';
+
+    const getMaxQueueSize = () => {
+      if (!history.length) return 3;
+      const maxInHistory = Math.max(3, ...history.map(h => h.queueLength || 0));
+      return Math.min(maxInHistory, 4);
+    };
+
+    const maxQueue = getMaxQueueSize();
+
+    const getServerStateCode = (s) => {
+      if (s.state === 'OCUPADO') return '1';
+      if (s.state === 'AUSENTE') return 'A';
+      return '0';
+    };
+
+    const getFelEvents = (entry) => {
+      const events = {
+        nextArrival: isIsolated ? Array(numServers).fill(null) : null,
+        nextServiceEnds: Array(numServers).fill(null)
+      };
+      if (!entry.fel) return events;
+      for (const event of entry.fel) {
+        if (event.type === 'LLEGADA' || event.type === 'LLEGADA_VIP') {
+          if (isIsolated) {
+            const sId = event.data?.serverId;
+            if (sId && !events.nextArrival[sId - 1]) events.nextArrival[sId - 1] = event.time;
+          } else {
+            if (!events.nextArrival) events.nextArrival = event.time;
+          }
+        } else if (event.type === 'FIN_SERVICIO') {
+          const sId = event.data?.serverId;
+          if (sId && !events.nextServiceEnds[sId - 1]) {
+            events.nextServiceEnds[sId - 1] = event.time;
+          }
+        }
+      }
+      return events;
+    };
+
+    const escapeCSV = (val) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      // Usamos punto y coma como separador y lo escapamos adecuadamente
+      if (str.includes(';') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    // 1. Crear Cabeceras
+    const headers = [];
+    headers.push('Hora actual');
+
+    if (isIsolated) {
+      for (let i = 0; i < numServers; i++) {
+        headers.push(`Próx. Llegada S${i + 1}`);
+      }
+    } else {
+      headers.push('Próx. Llegada');
+    }
+
+    for (let i = 0; i < numServers; i++) {
+      headers.push(isMultiServer ? `Fin Servicio S${i + 1}` : 'Fin Servicio');
+    }
+
+    if (isSingleQueue) {
+      headers.push('Cola');
+    } else {
+      for (let i = 0; i < numServers; i++) {
+        headers.push(`Cola S${i + 1}`);
+      }
+    }
+
+    for (let i = 0; i < numServers; i++) {
+      headers.push(isMultiServer ? `Estado S${i + 1}` : 'Estado');
+    }
+
+    if (flags.hasServerBreaks) {
+      if (isMultiServer) {
+        for (let i = 0; i < numServers; i++) {
+          headers.push(`S${i + 1} Desc`);
+          headers.push(`S${i + 1} Trab`);
+          headers.push(`P${i + 1}`);
+        }
+      } else {
+        headers.push('Hora Desc.');
+        headers.push('Hora Trab.');
+        headers.push('Presencia');
+      }
+    }
+
+    if (flags.hasClientAbandonment) {
+      headers.push('Hora Aband.');
+      for (let i = 0; i < maxQueue; i++) {
+        headers.push(`C${i + 1}`);
+      }
+    }
+
+    headers.push('Evento');
+
+    // 2. Mapear Filas
+    const rows = history.map(entry => {
+      const row = [];
+      const origin = entry.eventType;
+      const felEvents = getFelEvents(entry);
+
+      // Hora actual
+      row.push(formatTime(entry.time));
+
+      // Próx. Llegada
+      if (isIsolated) {
+        for (let i = 0; i < numServers; i++) {
+          const t = felEvents.nextArrival[i];
+          row.push(t ? formatTime(t) : '-');
+        }
+      } else {
+        row.push(felEvents.nextArrival ? formatTime(felEvents.nextArrival) : '-');
+      }
+
+      // Fin Servicio
+      for (let i = 0; i < numServers; i++) {
+        const t = felEvents.nextServiceEnds[i];
+        row.push(t ? formatTime(t) : '-');
+      }
+
+      // Cola
+      if (isSingleQueue) {
+        row.push(entry.queueLength);
+      } else {
+        for (let i = 0; i < numServers; i++) {
+          row.push(entry.servers[i].queue?.length || 0);
+        }
+      }
+
+      // Estado PS
+      for (let i = 0; i < numServers; i++) {
+        row.push(getServerStateCode(entry.servers[i]));
+      }
+
+      // Descansos
+      if (flags.hasServerBreaks) {
+        if (isMultiServer) {
+          for (let i = 0; i < numServers; i++) {
+            const s = entry.servers[i];
+            row.push(s.nextBreakTime ? formatTime(s.nextBreakTime) : '-');
+            row.push(s.nextWorkTime ? formatTime(s.nextWorkTime) : '-');
+            row.push(s.present ? 'P' : 'A');
+          }
+        } else {
+          row.push(entry.servers[0].nextBreakTime ? formatTime(entry.servers[0].nextBreakTime) : '-');
+          row.push(entry.servers[0].nextWorkTime ? formatTime(entry.servers[0].nextWorkTime) : '-');
+          row.push(entry.servers[0].present ? 'P' : 'A');
+        }
+      }
+
+      // Abandonos
+      if (flags.hasClientAbandonment) {
+        row.push(entry.eventType === 'ABANDONO' ? formatTime(entry.time) : '-');
+        for (let ci = 0; ci < maxQueue; ci++) {
+          const client = entry.queueClients?.[ci];
+          const abandonTime = client && client.patienceTime !== Infinity
+            ? client.arrivalTime + client.patienceTime : null;
+          row.push(abandonTime && ci < entry.queueLength ? formatTime(abandonTime) : '-');
+        }
+      }
+
+      // Evento
+      row.push(entry.eventType);
+
+      return row.map(escapeCSV).join(';');
+    });
+
+    // Indicamos explícitamente a Excel el separador utilizado mediante sep=;
+    const csvContent = "\ufeffsep=;\n" + [headers.join(';'), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'simulacion_resultados.csv';
+    a.download = `simulacion_resultados_${topology.toLowerCase()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };

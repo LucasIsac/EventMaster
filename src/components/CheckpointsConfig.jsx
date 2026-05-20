@@ -22,6 +22,18 @@ export function CheckpointsConfig({ rules, setRules }) {
     } else if (type === 'abandon') {
       newRule.value = valueNum;
       newRule.label = `Cada ${valueNum} abandono(s)`;
+    } else if (type === 'break_n') {
+      newRule.value = valueNum;
+      newRule.label = `Al iniciar el descanso #${valueNum}`;
+    } else if (type === 'break_end_n') {
+      newRule.value = valueNum;
+      newRule.label = `Al terminar el descanso #${valueNum}`;
+    } else if (type === 'served_n') {
+      newRule.value = valueNum;
+      newRule.label = `Al atender al cliente #${valueNum}`;
+    } else if (type === 'abandon_n') {
+      newRule.value = valueNum;
+      newRule.label = `Al ocurrir el abandono #${valueNum}`;
     }
 
     setRules([...rules, newRule]);
@@ -42,18 +54,18 @@ export function CheckpointsConfig({ rules, setRules }) {
           <option value="absolute">En una hora específica (Absoluto)</option>
           <option value="break">En cada descanso</option>
           <option value="abandon">Cada X abandonos</option>
+          <option value="break_n">Al iniciar el descanso N</option>
+          <option value="break_end_n">Al terminar el descanso N</option>
+          <option value="served_n">Al atender al cliente N</option>
+          <option value="abandon_n">Al ocurrir el abandono N</option>
         </select>
 
-        {type === 'interval' && (
-          <input type="number" value={valueNum} onChange={(e) => setValueNum(parseInt(e.target.value) || 1)} placeholder="Minutos" />
+        {(type === 'interval' || type === 'abandon' || type === 'break_n' || type === 'break_end_n' || type === 'served_n' || type === 'abandon_n') && (
+          <input type="number" min="1" value={valueNum} onChange={(e) => setValueNum(parseInt(e.target.value) || 1)} placeholder="N / Cantidad" />
         )}
         
         {type === 'absolute' && (
           <TimeInput value={valueTime} onChange={setValueTime} />
-        )}
-        
-        {type === 'abandon' && (
-          <input type="number" value={valueNum} onChange={(e) => setValueNum(parseInt(e.target.value) || 1)} placeholder="Cantidad" />
         )}
 
         <button className="btn btn-primary btn-small" onClick={addRule}>+ Agregar</button>

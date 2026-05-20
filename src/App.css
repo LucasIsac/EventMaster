@@ -506,7 +506,8 @@ kbd {
 }
 
 .table-wrapper {
-  overflow-x: auto;
+  overflow: auto;
+  max-height: 65vh;
   border-radius: 8px;
   border: 1px solid var(--border);
 }
@@ -527,6 +528,12 @@ kbd {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.advanced-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .advanced-table th {
