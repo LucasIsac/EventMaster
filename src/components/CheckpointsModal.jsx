@@ -1,4 +1,5 @@
 import React from 'react';
+import { Camera, X } from 'lucide-react';
 
 export function CheckpointsModal({ isOpen, onClose, checkpoints, formatTime, startTime }) {
   if (!isOpen) return null;
@@ -7,8 +8,8 @@ export function CheckpointsModal({ isOpen, onClose, checkpoints, formatTime, sta
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>📸 Galería de Fotos (Checkpoints)</h2>
-          <button className="btn-close" onClick={onClose}>✖</button>
+          <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Camera size={24}/> Galería de Fotos (Checkpoints)</h2>
+          <button className="btn-close" onClick={onClose}><X size={20}/></button>
         </div>
         <div className="modal-body">
           {checkpoints && checkpoints.length > 0 ? (

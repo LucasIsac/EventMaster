@@ -106,27 +106,27 @@ export function AdvancedTable({ history, flags, config, vocab }) {
               <th rowSpan="2" className="th-time">Hora actual</th>
 
               {isIsolated ? (
-                <th colSpan={numServers} className="th-fel" style={{background: '#0ea5e9'}}>H. de prox. Lleg. de un cl. al sist p/recibir el serv:</th>
+                <th colSpan={numServers} className="th-fel">Próx. Llegada</th>
               ) : (
-                <th rowSpan="2" className="th-fel" style={{background: '#0ea5e9'}}>H. de prox. Lleg. de un cl. al sist p/recibir el serv:</th>
+                <th rowSpan="2" className="th-fel">Próx. Llegada</th>
               )}
 
               {isMultiServer ? (
-                <th colSpan={numServers} className="th-fel" style={{background: '#38bdf8'}}>Hora de próx. Fin de Servicio</th>
+                <th colSpan={numServers} className="th-fel">Próx. Fin Servicio</th>
               ) : (
-                <th rowSpan="2" className="th-fel" style={{background: '#38bdf8'}}>Hora de próx. Fin de Servicio</th>
+                <th rowSpan="2" className="th-fel">Próx. Fin Servicio</th>
               )}
 
               {isSingleQueue ? (
-                <th rowSpan="2">Cant. de clientes en cola</th>
+                <th rowSpan="2" className="th-queue-group">Cola</th>
               ) : (
-                <th colSpan={numServers} className="th-queue-group" style={{background: '#8b5cf6'}}>Cant. de clientes en cola de:</th>
+                <th colSpan={numServers} className="th-queue-group">Cola por PS</th>
               )}
 
               {isMultiServer ? (
-                <th colSpan={numServers} className="th-server-group">Estado del PS</th>
+                <th colSpan={numServers} className="th-server-group">Estado</th>
               ) : (
-                <th rowSpan="2">Estado del PS</th>
+                <th rowSpan="2" className="th-server-group">Estado</th>
               )}
 
               {flags.hasServerBreaks && (
@@ -140,19 +140,19 @@ export function AdvancedTable({ history, flags, config, vocab }) {
                 </th>
               )}
 
-              <th rowSpan="2" className="th-graphic" style={{background: '#334155'}}>ESQUEMAS DE ESTADOS DEL SISTEMA</th>
+              <th rowSpan="2" className="th-graphic">Esquema</th>
             </tr>
             <tr>
               {isIsolated && Array.from({ length: numServers }, (_, i) => (
-                <th key={`fela-${i}`} className="th-fel" style={{background: '#0ea5e9'}}>S{i + 1}</th>
+                <th key={`fela-${i}`} className="th-fel">S{i + 1}</th>
               ))}
 
               {isMultiServer && Array.from({ length: numServers }, (_, i) => (
-                <th key={`fel-${i}`} className="th-fel" style={{background: '#38bdf8'}}>PS{i + 1}</th>
+                <th key={`fel-${i}`} className="th-fel">PS{i + 1}</th>
               ))}
 
               {!isSingleQueue && Array.from({ length: numServers }, (_, i) => (
-                <th key={`q-${i}`} className="th-queue-sub" style={{background: '#a78bfa', fontSize: '0.75rem'}}>PS{i + 1}</th>
+                <th key={`q-${i}`} className="th-queue-sub">PS{i + 1}</th>
               ))}
 
               {isMultiServer && Array.from({ length: numServers }, (_, i) => (

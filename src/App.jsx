@@ -6,6 +6,7 @@ import { ControlPanel } from './components/ControlPanel';
 import { StatsPanel } from './components/StatsPanel';
 import { AdvancedTable } from './components/AdvancedTable';
 import { CheckpointsModal } from './components/CheckpointsModal';
+import { BarChart2 } from 'lucide-react';
 import './App.css';
 
 function App() {
@@ -401,8 +402,8 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>EventMaster - Simulador de Colas</h1>
-        <p>SIMULACIÓN DE EVENTOS DISCRETOS</p>
+        <h1>Event<span>Master</span></h1>
+        <p>Simulador de Eventos Discretos · Sistemas de Colas</p>
       </header>
 
       <main className="main">
@@ -452,7 +453,10 @@ function App() {
           return (
             <section className={`results-section${expanded ? ' results-expanded' : ''}`}>
               <div className="card">
-                <h2>📊 Tabla de Simulación de Eventos Discretos</h2>
+                <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <BarChart2 size={24} className="inline-icon" /> 
+                  Tabla de Simulación de Eventos Discretos
+                </h2>
                 {!currentState || currentState.history.length === 0 ? (
                   <p className="empty">Inicialice y ejecute la simulación</p>
                 ) : (

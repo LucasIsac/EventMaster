@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import TimeInput from './TimeInput';
+import { Camera, X } from 'lucide-react';
 
 export function CheckpointsConfig({ rules, setRules }) {
   const [type, setType] = useState('interval');
   const [valueNum, setValueNum] = useState(60);
   const [valueTime, setValueTime] = useState(3600);
+  const [infoActive, setInfoActive] = useState(false);
 
   const addRule = () => {
     let newRule = { id: Date.now().toString(), type };
@@ -35,7 +37,6 @@ export function CheckpointsConfig({ rules, setRules }) {
       newRule.value = valueNum;
       newRule.label = `Al ocurrir el abandono #${valueNum}`;
     }
-
     setRules([...rules, newRule]);
   };
 
@@ -45,13 +46,33 @@ export function CheckpointsConfig({ rules, setRules }) {
 
   return (
     <div className="config-group checkpoints-config">
-      <h3>📸 Fotos / Checkpoints</h3>
-      <p className="help-text">Configura cuándo tomar una "foto" del estado (ideal para responder preguntas específicas).</p>
+      <div className="config-group-header">
+        <h3 style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <Camera size={14}/> Fotos / Checkpoints
+        </h3>
+        <button
+          className={`info-btn${infoActive ? ' active' : ''}`}
+          onMouseEnter={() => setInfoActive(true)}
+          onMouseLeave={() => setInfoActive(false)}
+          onClick={() => setInfoActive(v => !v)}
+          type="button"
+          aria-label="Más información"
+        >
+          i
+          <span className="info-tooltip">
+            Configura momentos clave para "fotografiar" el estado del sistema. Útil para responder preguntas como "¿cuántos clientes había a las 2 hs?" o "¿qué pasó en el 3° descanso?".
+          </span>
+        </button>
+      </div>
+
+      <p className="help-text">
+        Captura el estado en momentos clave para análisis puntual.
+      </p>
       
       <div className="add-rule-form">
         <select value={type} onChange={(e) => setType(e.target.value)} className="rule-select">
-          <option value="interval">Cada X minutos (Intervalo)</option>
-          <option value="absolute">En una hora específica (Absoluto)</option>
+          <option value="interval">Cada X minutos</option>
+          <option value="absolute">En hora específica</option>
           <option value="break">En cada descanso</option>
           <option value="abandon">Cada X abandonos</option>
           <option value="break_n">Al iniciar el descanso N</option>
@@ -74,8 +95,12 @@ export function CheckpointsConfig({ rules, setRules }) {
       <ul className="rules-list">
         {rules.map(rule => (
           <li key={rule.id} className="rule-item">
-            <span>📷 {rule.label}</span>
-            <button className="btn-remove" onClick={() => removeRule(rule.id)}>❌</button>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Camera size={13}/> {rule.label}
+            </span>
+            <button className="btn-remove" onClick={() => removeRule(rule.id)} title="Eliminar">
+              <X size={13}/>
+            </button>
           </li>
         ))}
         {rules.length === 0 && <li className="empty-rules">Sin fotos configuradas</li>}

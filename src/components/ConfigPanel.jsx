@@ -1,9 +1,28 @@
-import React from 'react';
+import React, { useState } from 'react';
 import TimeInput from './TimeInput';
 import TimeField from './TimeField';
 import { CheckpointsConfig } from './CheckpointsConfig';
-
+import { Settings, Dices } from 'lucide-react';
 import { academicPresets } from '../presets';
+
+// Tooltip "i" button for config groups
+function InfoTooltip({ text }) {
+  const [active, setActive] = useState(false);
+  return (
+    <button
+      className={`info-btn${active ? ' active' : ''}`}
+      onMouseEnter={() => setActive(true)}
+      onMouseLeave={() => setActive(false)}
+      onClick={() => setActive(v => !v)}
+      title={text}
+      type="button"
+      aria-label="Más información"
+    >
+      i
+      <span className="info-tooltip">{text}</span>
+    </button>
+  );
+}
 
 export function ConfigPanel({ 
   config, flags, initialState, updateConfig, updateFlags, updateInitialState, 
@@ -13,32 +32,38 @@ export function ConfigPanel({
   return (
     <section className="config-section">
       <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h2 style={{ margin: 0 }}>⚙️ Configuración</h2>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <div className="config-header">
+          <h2><Settings size={18}/> Configuración</h2>
+          <div className="config-actions">
             <select 
               value={activePreset} 
               onChange={(e) => applyPreset(e.target.value)}
-              style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border)' }}
+              className="preset-select"
             >
               {Object.entries(academicPresets).map(([id, preset]) => (
                 <option key={id} value={id}>{preset.label}</option>
               ))}
             </select>
-            <button className="btn btn-secondary" onClick={generateRandomScenario} style={{ padding: '8px 16px', fontSize: '0.8rem' }}>
-              🎲 Aleatorio
+            <button className="btn btn-secondary btn-icon btn-sm" onClick={generateRandomScenario}>
+              <Dices size={14}/> Aleatorio
             </button>
           </div>
         </div>
+
         <div className="config-grid">
+
+          {/* Tiempo */}
           <div className="config-group">
-            <h3>Tiempo</h3>
+            <div className="config-group-header">
+              <h3>Tiempo</h3>
+              <InfoTooltip text="Duración total de la simulación en minutos y el reloj de inicio del sistema." />
+            </div>
             <label>
               <span>Duración (minutos)</span>
               <input type="number" value={config.maxTime / 60} onChange={(e) => updateConfig('maxTime', (parseInt(e.target.value) || 0) * 60)} />
             </label>
             <label>
-              <span>Hora inicio (HH:MM:SS)</span>
+              <span>Hora de inicio (HH:MM:SS)</span>
               <TimeInput 
                 value={config.startTime} 
                 onChange={(val) => updateConfig('startTime', val)}
@@ -46,10 +71,14 @@ export function ConfigPanel({
             </label>
           </div>
 
+          {/* ΔtLL */}
           <div className="config-group">
-            <h3>ΔtLL</h3>
+            <div className="config-group-header">
+              <h3>ΔtLL — Llegadas</h3>
+              <InfoTooltip text="Intervalo de tiempo entre llegadas consecutivas de clientes. Puede ser un valor fijo, un rango uniforme (ej: 30-60) o exponencial." />
+            </div>
             <label>
-              <span>Intervalo llegada</span>
+              <span>Intervalo de llegada (seg)</span>
               <TimeField 
                 value={config.arrivalInterval} 
                 onChange={(val) => updateConfig('arrivalInterval', val)}
@@ -58,10 +87,14 @@ export function ConfigPanel({
             </label>
           </div>
 
+          {/* ΔtS */}
           <div className="config-group">
-            <h3>ΔtS</h3>
+            <div className="config-group-header">
+              <h3>ΔtS — Servicio</h3>
+              <InfoTooltip text="Duración de la atención de cada cliente en el servidor. Acepta constante, rango o distribución exponencial." />
+            </div>
             <label>
-              <span>Tiempo servicio</span>
+              <span>Tiempo de servicio (seg)</span>
               <TimeField 
                 value={config.serviceTime} 
                 onChange={(val) => updateConfig('serviceTime', val)}
@@ -70,10 +103,14 @@ export function ConfigPanel({
             </label>
           </div>
 
+          {/* Topología */}
           <div className="config-group">
-            <h3>Topología y Servidores</h3>
+            <div className="config-group-header">
+              <h3>Topología y Servidores</h3>
+              <InfoTooltip text="Define cómo están organizados los servidores: paralelos independientes, cola única compartida (supermercado) o servidores en cadena." />
+            </div>
             <label>
-              <span>Tipo de Sistema</span>
+              <span>Tipo de sistema</span>
               <select value={config.topology} onChange={(e) => updateConfig('topology', e.target.value)}>
                 <option value="AISLADOS">Aislados / Paralelos</option>
                 <option value="COLA_UNICA">Cola Única (Supermercado)</option>
@@ -81,15 +118,19 @@ export function ConfigPanel({
               </select>
             </label>
             <label>
-              <span>Número de Servidores</span>
+              <span>Número de servidores</span>
               <input type="number" min="1" max="10" value={config.numServers} onChange={(e) => updateConfig('numServers', parseInt(e.target.value) || 1)} />
             </label>
           </div>
 
+          {/* Estado Inicial */}
           <div className="config-group">
-            <h3>Estado Inicial</h3>
+            <div className="config-group-header">
+              <h3>Estado Inicial</h3>
+              <InfoTooltip text="Condición del sistema al inicio de la simulación: clientes que ya están esperando y si el servidor comienza ocupado." />
+            </div>
             <label>
-              <span>Clientes en cola</span>
+              <span>Clientes en cola al inicio</span>
               <input type="number" value={initialState.clientsInQueue} onChange={(e) => updateInitialState('clientsInQueue', parseInt(e.target.value) || 0)} />
             </label>
             {initialState.clientsInQueue > 0 && (
@@ -113,8 +154,12 @@ export function ConfigPanel({
             )}
           </div>
 
+          {/* Ciclo Trabajo-Descanso */}
           <div className="config-group">
-            <h3>Ciclo Trabajo-Descanso</h3>
+            <div className="config-group-header">
+              <h3>Ciclo Trabajo-Descanso</h3>
+              <InfoTooltip text="El servidor alterna entre períodos de trabajo activo (ΔT) y descanso (ΔD). Durante el descanso no atiende clientes y figura como 'Ausente'." />
+            </div>
             <label className="switch">
               <input type="checkbox" checked={flags.hasServerBreaks} onChange={(e) => updateFlags('hasServerBreaks', e.target.checked)} />
               <span className="slider"></span>
@@ -123,7 +168,7 @@ export function ConfigPanel({
             {flags.hasServerBreaks && (
               <>
                 <label>
-                  <span>ΔT - Tiempo Trabajo (seg)</span>
+                  <span>ΔT — Tiempo de trabajo (seg)</span>
                   <TimeField 
                     value={config.workTime} 
                     onChange={(val) => updateConfig('workTime', val)}
@@ -131,7 +176,7 @@ export function ConfigPanel({
                   />
                 </label>
                 <label>
-                  <span>ΔD - Tiempo Descanso (seg)</span>
+                  <span>ΔD — Tiempo de descanso (seg)</span>
                   <TimeField 
                     value={config.restTime} 
                     onChange={(val) => updateConfig('restTime', val)}
@@ -142,8 +187,12 @@ export function ConfigPanel({
             )}
           </div>
 
+          {/* Reglas Extra */}
           <div className="config-group">
-            <h3>Reglas Extra</h3>
+            <div className="config-group-header">
+              <h3>Reglas Extra</h3>
+              <InfoTooltip text="Comportamientos opcionales: abandonos (clientes que se van si esperan demasiado), prioridad VIP y zona de seguridad previa al servidor." />
+            </div>
             <label className="switch">
               <input type="checkbox" checked={flags.hasClientAbandonment} onChange={(e) => updateFlags('hasClientAbandonment', e.target.checked)} />
               <span className="slider"></span>
@@ -151,7 +200,7 @@ export function ConfigPanel({
             </label>
             {flags.hasClientAbandonment && (
               <label>
-                <span>ΔSC (seg)</span>
+                <span>ΔSC — Espera máxima (seg)</span>
                 <TimeField 
                   value={config.maxWaitTime} 
                   onChange={(val) => updateConfig('maxWaitTime', val)}
@@ -171,7 +220,7 @@ export function ConfigPanel({
             </label>
             {flags.hasSecurityZone && (
               <label>
-                <span>ΔtSZ→PS (seg)</span>
+                <span>ΔtSZ→PS — Tiempo de traslado (seg)</span>
                 <TimeField 
                   value={config.travelTime} 
                   onChange={(val) => updateConfig('travelTime', val)}
