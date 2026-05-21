@@ -108,4 +108,59 @@ describe('Simulator Engine Tests', () => {
     expect(sim.stats.totalArrivals).toBe(0);
     expect(sim.history.length).toBeGreaterThan(0);
   });
+
+  it('should support individual arrival and service times per server (Isolated / Multiple)', () => {
+    const config = {
+      ...baseConfig,
+      topology: 'AISLADOS',
+      numServers: 3,
+      arrivalInterval: '45, 25, 15',
+      serviceTime: '40, 20, 10'
+    };
+    const sim = new Simulator(config, noBreaks);
+    expect(sim.arrivalGenerators.length).toBe(3);
+    expect(sim.serviceGenerators.length).toBe(3);
+    
+    // Validar los valores constantes de los generadores individuales
+    expect(sim.arrivalGenerators[0].next()).toBe(45);
+    expect(sim.arrivalGenerators[1].next()).toBe(25);
+    expect(sim.arrivalGenerators[2].next()).toBe(15);
+    
+    expect(sim.serviceGenerators[0].next()).toBe(40);
+    expect(sim.serviceGenerators[1].next()).toBe(20);
+    expect(sim.serviceGenerators[2].next()).toBe(10);
+  });
+
+  it('should support advanced serversInitialState and firstArrivalTimes', () => {
+    const config = {
+      ...baseConfig,
+      topology: 'AISLADOS',
+      numServers: 2,
+      arrivalInterval: '100, 100',
+      serviceTime: '50, 50'
+    };
+    const initialState = {
+      serversInitialState: [
+        { busy: true, busyUntil: 10, queueLength: 3 },
+        { busy: true, busyUntil: 20, queueLength: 5 }
+      ],
+      firstArrivalTimes: [30, 40]
+    };
+    const sim = new Simulator(config, noBreaks, initialState);
+    
+    // Server 1
+    expect(sim.servers[0].state).toBe(ServerState.BUSY);
+    expect(sim.servers[0].serviceEndTime).toBe(10);
+    expect(sim.servers[0].queue.length).toBe(3);
+    
+    // Server 2
+    expect(sim.servers[1].state).toBe(ServerState.BUSY);
+    expect(sim.servers[1].serviceEndTime).toBe(20);
+    expect(sim.servers[1].queue.length).toBe(5);
+
+    // FEL should contain firstArrivalTimes (30 and 40)
+    const arrivals = sim.fel.filter(e => e.type === 'LLEGADA');
+    expect(arrivals.some(e => e.time === 30)).toBe(true);
+    expect(arrivals.some(e => e.time === 40)).toBe(true);
+  });
 });

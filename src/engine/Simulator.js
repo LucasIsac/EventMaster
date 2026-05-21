@@ -134,11 +134,33 @@ export class Simulator {
       }
     };
 
-    const arrIntervals = Array.isArray(this.config.arrivalInterval) ? this.config.arrivalInterval : [this.config.arrivalInterval];
-    const srvIntervals = Array.isArray(this.config.serviceTime) ? this.config.serviceTime : [this.config.serviceTime];
+    const splitConfigValue = (val, count) => {
+      if (Array.isArray(val)) return val;
+      if (typeof val !== 'string') return [val];
+      if (val.includes(';')) {
+        return val.split(';').map(s => s.trim());
+      }
+      if (val.includes(',')) {
+        const parts = val.split(',').map(s => s.trim());
+        if (parts.length === count) {
+          return parts;
+        }
+      }
+      return [val];
+    };
 
-    this.arrivalGenerators = arrIntervals.map((val) => getGenerator(val || this.config.arrivalInterval, this.config.arrivalDistType || 'uniform'));
-    this.serviceGenerators = srvIntervals.map((val) => getGenerator(val || this.config.serviceTime, this.config.serviceDistType || 'uniform'));
+    const arrIntervals = splitConfigValue(this.config.arrivalInterval, this.numServers);
+    const srvIntervals = splitConfigValue(this.config.serviceTime, this.numServers);
+
+    this.arrivalGenerators = Array.from({ length: this.numServers }, (_, i) => {
+      const val = arrIntervals[i] !== undefined ? arrIntervals[i] : arrIntervals[0];
+      return getGenerator(val, this.config.arrivalDistType || 'uniform');
+    });
+
+    this.serviceGenerators = Array.from({ length: this.numServers }, (_, i) => {
+      const val = srvIntervals[i] !== undefined ? srvIntervals[i] : srvIntervals[0];
+      return getGenerator(val, this.config.serviceDistType || 'uniform');
+    });
 
     this.generators = {
       arrival: this.arrivalGenerators[0],
@@ -199,40 +221,63 @@ export class Simulator {
   #initialize() {
     resetCounters();
 
-    const { clientsInQueue, vipClientsInQueue, initialWaitTime, serverBusy, busyUntil } = this.initialState;
+    const { clientsInQueue, vipClientsInQueue, initialWaitTime, serverBusy, busyUntil, serversInitialState } = this.initialState;
     const waitTime = parseFloat(initialWaitTime) || 0;
 
     // Poblar colas iniciales con clientes que ya llevan tiempo esperando
-    const pushToQueue = (client, isVip) => {
+    const pushToQueue = (client, isVip, serverIdx = 0) => {
       if (this.topology === SystemTopology.SINGLE_QUEUE) {
         if (isVip) this.queues.vip.push(client);
         else this.queues.default.push(client);
       } else {
-        this.servers[0].queue.push(client);
+        const targetServer = this.servers[serverIdx] || this.servers[0];
+        targetServer.queue.push(client);
       }
       this.#scheduleAbandonment(client);
     };
 
-    for (let i = 0; i < (vipClientsInQueue || 0); i++) {
-      const client = this.#createClient(this.clock, true, waitTime);
-      pushToQueue(client, true);
-    }
-    for (let i = 0; i < (clientsInQueue || 0); i++) {
-      const client = this.#createClient(this.clock, false, waitTime);
-      pushToQueue(client, false);
-    }
+    if (serversInitialState && Array.isArray(serversInitialState)) {
+      serversInitialState.forEach((sInit, idx) => {
+        const server = this.servers[idx];
+        if (!server) return;
 
-    // Estado inicial de servidores
-    if (serverBusy && busyUntil) {
-      // Por defecto, ocupamos el primer servidor si se indica en el estado inicial global
-      const s1 = this.servers[0];
-      s1.setState(ServerState.BUSY, this.clock);
-      s1.clientInService = this.#createClient(this.clock, false, 0);
-      s1.serviceEndTime = this.clock + parseFloat(busyUntil);
-      this.fel.push(createEvent(s1.serviceEndTime, EventType.SERVICE_END, {
-        serverId: s1.id,
-        clientId: s1.clientInService.id
-      }));
+        if (sInit.busy && sInit.busyUntil !== undefined) {
+          server.setState(ServerState.BUSY, this.clock);
+          server.clientInService = this.#createClient(this.clock, false, 0);
+          server.serviceEndTime = this.clock + parseFloat(sInit.busyUntil);
+          this.fel.push(createEvent(server.serviceEndTime, EventType.SERVICE_END, {
+            serverId: server.id,
+            clientId: server.clientInService.id
+          }));
+        }
+
+        if (sInit.queueLength) {
+          for (let i = 0; i < sInit.queueLength; i++) {
+            const client = this.#createClient(this.clock, false, waitTime);
+            pushToQueue(client, false, idx);
+          }
+        }
+      });
+    } else {
+      for (let i = 0; i < (vipClientsInQueue || 0); i++) {
+        const client = this.#createClient(this.clock, true, waitTime);
+        pushToQueue(client, true, 0);
+      }
+      for (let i = 0; i < (clientsInQueue || 0); i++) {
+        const client = this.#createClient(this.clock, false, waitTime);
+        pushToQueue(client, false, 0);
+      }
+
+      if (serverBusy && busyUntil) {
+        const s1 = this.servers[0];
+        s1.setState(ServerState.BUSY, this.clock);
+        s1.clientInService = this.#createClient(this.clock, false, 0);
+        s1.serviceEndTime = this.clock + parseFloat(busyUntil);
+        this.fel.push(createEvent(s1.serviceEndTime, EventType.SERVICE_END, {
+          serverId: s1.id,
+          clientId: s1.clientInService.id
+        }));
+      }
     }
 
     this.#scheduleFirstArrivals(serverBusy, busyUntil);
@@ -249,6 +294,22 @@ export class Simulator {
 
   #scheduleFirstArrivals(serverBusy, busyUntil) {
     if (this.disableArrivals) return;
+
+    if (this.initialState.firstArrivalTimes && Array.isArray(this.initialState.firstArrivalTimes)) {
+      this.initialState.firstArrivalTimes.forEach((timeOffset, idx) => {
+        const absTime = this.clock + parseFloat(timeOffset);
+        if (absTime <= this.config.startTime + this.config.maxTime) {
+          const eventData = this.topology === SystemTopology.ISOLATED ? { serverId: this.servers[idx].id } : {};
+          this.fel.push(createEvent(absTime, EventType.ARRIVAL, eventData));
+        }
+      });
+      this.firstArrivalScheduled = true;
+      if (this.flags.hasPriority) {
+        this.firstVipArrivalScheduled = true;
+      }
+      return;
+    }
+
     const busyUntilAbs = this.config.startTime + (parseFloat(busyUntil) || 0);
     
     if (this.topology === SystemTopology.ISOLATED) {

@@ -37,12 +37,22 @@ export function CheckpointsConfig({ rules, setRules }) {
       newRule.value = valueNum;
       newRule.label = `Al ocurrir el abandono #${valueNum}`;
     }
+
     setRules([...rules, newRule]);
   };
 
   const removeRule = (id) => {
     setRules(rules.filter(r => r.id !== id));
   };
+
+  const showNumInput = (
+    type === 'interval' ||
+    type === 'abandon' ||
+    type === 'break_n' ||
+    type === 'break_end_n' ||
+    type === 'served_n' ||
+    type === 'abandon_n'
+  );
 
   return (
     <div className="config-group checkpoints-config">
@@ -60,7 +70,7 @@ export function CheckpointsConfig({ rules, setRules }) {
         >
           i
           <span className="info-tooltip">
-            Configura momentos clave para "fotografiar" el estado del sistema. Útil para responder preguntas como "¿cuántos clientes había a las 2 hs?" o "¿qué pasó en el 3° descanso?".
+            Configura momentos clave para "fotografiar" el estado del sistema. Útil para responder preguntas como "¿cuántos clientes había a las 2 hs?", "¿qué pasó en el 3° descanso?" o "al atender al cliente N".
           </span>
         </button>
       </div>
@@ -81,8 +91,14 @@ export function CheckpointsConfig({ rules, setRules }) {
           <option value="abandon_n">Al ocurrir el abandono N</option>
         </select>
 
-        {(type === 'interval' || type === 'abandon' || type === 'break_n' || type === 'break_end_n' || type === 'served_n' || type === 'abandon_n') && (
-          <input type="number" min="1" value={valueNum} onChange={(e) => setValueNum(parseInt(e.target.value) || 1)} placeholder="N / Cantidad" />
+        {showNumInput && (
+          <input
+            type="number"
+            min="1"
+            value={valueNum}
+            onChange={(e) => setValueNum(parseInt(e.target.value) || 1)}
+            placeholder="N / Cantidad"
+          />
         )}
         
         {type === 'absolute' && (
