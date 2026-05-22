@@ -119,24 +119,12 @@ function App() {
   const run = useCallback(() => {
     if (!simulator) return;
     setIsRunning(true);
-    const interval = Math.max(5, 500 / speed);
-    intervalRef.current = setInterval(() => {
-      if (simulator.isFinished()) {
-        clearInterval(intervalRef.current);
-        setIsRunning(false);
-        setCurrentState(simulator.getCurrentState());
-        return;
-      }
-      simulator.step();
-      setCurrentState(simulator.getCurrentState());
-    }, interval);
-  }, [simulator, speed]);
+  }, [simulator]);
 
   /**
    * Reinicia todo el sistema a su estado original.
    */
   const resetAll = useCallback(() => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
     setIsRunning(false);
     setHasStarted(false);
     setSimulator(null);
@@ -144,16 +132,41 @@ function App() {
   }, []);
 
   const pause = useCallback(() => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
     setIsRunning(false);
   }, []);
 
-  // Limpieza de intervalos al desmontar el componente
+  // Control de la ejecución en segundo plano (intervalo de simulación) con cambio dinámico de velocidad y agrupamiento (batching) de pasos a altas velocidades
   useEffect(() => {
+    if (!isRunning || !simulator) return;
+
+    // A partir de 10x, agrupamos pasos para no saturar los re-renders de React (mínimo 50ms de intervalo)
+    const intervalTime = Math.max(50, 500 / speed);
+    const stepsPerTick = speed > 10 ? Math.ceil(speed / 10) : 1;
+
+    intervalRef.current = setInterval(() => {
+      let finished = false;
+      for (let i = 0; i < stepsPerTick; i++) {
+        if (simulator.isFinished()) {
+          finished = true;
+          break;
+        }
+        simulator.step();
+      }
+
+      setCurrentState(simulator.getCurrentState());
+
+      if (finished) {
+        setIsRunning(false);
+      }
+    }, intervalTime);
+
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
-  }, []);
+  }, [isRunning, speed, simulator]);
 
   // Manejo de atajos de teclado para facilitar el uso del simulador
   useEffect(() => {
