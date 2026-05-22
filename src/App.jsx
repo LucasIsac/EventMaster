@@ -119,7 +119,7 @@ function App() {
   const run = useCallback(() => {
     if (!simulator) return;
     setIsRunning(true);
-    const interval = Math.max(10, 500 / speed);
+    const interval = Math.max(5, 500 / speed);
     intervalRef.current = setInterval(() => {
       if (simulator.isFinished()) {
         clearInterval(intervalRef.current);
