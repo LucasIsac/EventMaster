@@ -171,20 +171,22 @@ export const academicPresets = {
       maxTime: 21600, // 6 horas
       startTime: 0,
       arrivalInterval: '0',
-      serviceTime: '2700 - 5400',
+      serviceTime: '1800 - 2400, 600 - 1200, 300 - 1800',
       workTime: '0',
       restTime: '0',
       maxWaitTime: 'Infinity',
       travelTime: '0',
-      topology: 'COLA_UNICA',
-      numServers: 1
+      topology: 'ENCADENADOS',
+      numServers: 3,
+      singleWorkerStrategy: 'silla_por_silla'
     },
     flags: {
       hasServerBreaks: false,
       hasClientAbandonment: false,
       hasPriority: false,
       hasSecurityZone: false,
-      disableArrivals: true
+      disableArrivals: true,
+      singleWorkerChained: true
     },
     initialState: {
       clientsInQueue: 6,

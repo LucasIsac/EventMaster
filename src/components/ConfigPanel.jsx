@@ -125,6 +125,30 @@ export function ConfigPanel({
               <span>Número de servidores</span>
               <input type="number" min="1" max="10" value={config.numServers} onChange={(e) => updateConfig('numServers', parseInt(e.target.value) || 1)} />
             </label>
+            {config.topology === 'ENCADENADOS' && (
+              <>
+                <label className="checkbox">
+                  <input 
+                    type="checkbox" 
+                    checked={flags.singleWorkerChained || false} 
+                    onChange={(e) => updateFlags('singleWorkerChained', e.target.checked)} 
+                  />
+                  <span>Operario Único (Carpintero)</span>
+                </label>
+                {flags.singleWorkerChained && (
+                  <label>
+                    <span>Estrategia del operario</span>
+                    <select 
+                      value={config.singleWorkerStrategy || 'silla_por_silla'} 
+                      onChange={(e) => updateConfig('singleWorkerStrategy', e.target.value)}
+                    >
+                      <option value="silla_por_silla">Silla por silla (Escenario B)</option>
+                      <option value="por_lotes">Por lotes (Escenario C)</option>
+                    </select>
+                  </label>
+                )}
+              </>
+            )}
           </div>
 
           {/* Estado Inicial */}

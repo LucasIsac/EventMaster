@@ -349,6 +349,63 @@ describe('Simulator Engine Tests', () => {
     expect(sim.stats.totalArrivals).toBe(54);
   });
 
+  it('preset: Guia 4 Ej4 Carpintero sequential stages run successfully', () => {
+    const { sim } = runPreset('guia4_ej4');
+    expect(sim.history.length).toBeGreaterThan(0);
+    const initialHistory = snapshot(sim.history[0]);
+    expect(initialHistory.q).toBe(5);
+    expect(initialHistory.serverQ).toEqual([5, 0, 0]); // 6 clients: 1 in service at S1, 5 in S1 queue
+  });
+
+  it('preset: Guia 4 Ej4 Carpintero behaves as a single worker constraint', () => {
+    // 1. Probar la estrategia por defecto (silla_por_silla)
+    const { sim } = runPreset('guia4_ej4');
+
+    // Asegurar que nunca haya más de 1 servidor ocupado simultáneamente
+    sim.history.forEach(step => {
+      const busyCount = step.servers.filter(s => s.state === 'OCUPADO').length;
+      expect(busyCount).toBeLessThanOrEqual(1);
+    });
+
+    // En silla_por_silla, los clientes terminan de forma intercalada.
+    // Por ejemplo, el cliente 1 sale antes de que el cliente 2 empiece la etapa 2.
+    const serviceEnds = sim.history.filter(h => h.eventType === 'FIN_SERVICIO');
+    const exitActions = serviceEnds.filter(h => h.action.includes('sale del sistema'));
+    
+    // Deberían salir sillas a lo largo de la simulación
+    expect(exitActions.length).toBeGreaterThan(0);
+    
+    // 2. Probar la estrategia por lotes (por_lotes)
+    const presetCopy = JSON.parse(JSON.stringify(academicPresets.guia4_ej4));
+    presetCopy.config.singleWorkerStrategy = 'por_lotes';
+    const simLotes = new Simulator(presetCopy.config, presetCopy.flags, presetCopy.initialState);
+    simLotes.run();
+
+    // Asegurar que nunca haya más de 1 servidor ocupado simultáneamente
+    simLotes.history.forEach(step => {
+      const busyCount = step.servers.filter(s => s.state === 'OCUPADO').length;
+      expect(busyCount).toBeLessThanOrEqual(1);
+    });
+
+    // En por_lotes, la primera silla no se termina (no sale del sistema) hasta que
+    // TODAS las sillas hayan completado la etapa 1 y la etapa 2.
+    // Busquemos cuándo se vacía la etapa 1:
+    const lotesEnds = simLotes.history.filter(h => h.eventType === 'FIN_SERVICIO');
+    const stage1Completions = lotesEnds.filter(h => h.action.includes('termina etapa 1'));
+    const stage3Completions = lotesEnds.filter(h => h.action.includes('termina servicio y sale'));
+
+    // Debe haber exactamente 6 terminaciones de etapa 1
+    expect(stage1Completions.length).toBe(6);
+
+    // En por_lotes, el primer fin de servicio de la etapa 3 (lustrado/salida) ocurre
+    // estrictamente DESPUÉS de que todas las sillas hayan terminado la etapa 1 y 2.
+    if (stage3Completions.length > 0) {
+      const firstExitTime = stage3Completions[0].time;
+      const lastStage1Time = stage1Completions[5].time;
+      expect(firstExitTime).toBeGreaterThanOrEqual(lastStage1Time);
+    }
+  });
+
   it('should parse compact ranges without silently converting them to constants', () => {
     expect(parseTimeInput('30-60')).toEqual({ mode: 'range', min: 30, max: 60 });
     expect(parseTimeInput('60 - 30').error).toBeDefined();

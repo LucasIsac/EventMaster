@@ -406,12 +406,19 @@ export class Simulator {
     this.#processExpiredQueuedClients();
     
     // Inicia el reloj de descansos para todos los servidores y asigna atenciones
-    this.servers.forEach(server => {
-      this.#scheduleWorkCycle(server);
-      if (server.state === ServerState.IDLE) {
-        this.#selectNextClientForServer(server);
-      }
-    });
+    if (this.flags.singleWorkerChained) {
+      this.servers.forEach(server => {
+        this.#scheduleWorkCycle(server);
+      });
+      this.#checkAndStartSingleWorkerChained();
+    } else {
+      this.servers.forEach(server => {
+        this.#scheduleWorkCycle(server);
+        if (server.state === ServerState.IDLE) {
+          this.#selectNextClientForServer(server);
+        }
+      });
+    }
 
     // Registra el paso inicial en el historial de simulación
     this.#recordHistory('INICIO', 'Estado inicial');
@@ -607,11 +614,17 @@ export class Simulator {
     } else if (this.topology === SystemTopology.CHAINED) {
       // Los clientes siempre ingresan obligatoriamente por el Servidor 1 (Etapa 1)
       const s1 = this.servers[0];
-      if (s1.state === ServerState.IDLE && s1.present) {
-        this.#startService(s1, client);
-      } else {
+      if (this.flags.singleWorkerChained) {
         s1.queue.push(client);
         this.#scheduleAbandonment(client);
+        this.#checkAndStartSingleWorkerChained();
+      } else {
+        if (s1.state === ServerState.IDLE && s1.present) {
+          this.#startService(s1, client);
+        } else {
+          s1.queue.push(client);
+          this.#scheduleAbandonment(client);
+        }
       }
       this.#recordHistory(historyEventType, `C${client.id} llega -> Etapa 1 (S1)`);
     }
@@ -632,6 +645,42 @@ export class Simulator {
     const duration = gen.next();
     server.serviceEndTime = this.clock + duration;
     this.fel.push(createEvent(server.serviceEndTime, EventType.SERVICE_END, { serverId: server.id, clientId: client.id }));
+  }
+
+  #checkAndStartSingleWorkerChained() {
+    if (!this.flags.singleWorkerChained) return;
+
+    if (this.servers.some(s => s.state === ServerState.BUSY)) {
+      return;
+    }
+
+    const strategy = this.config.singleWorkerStrategy || 'silla_por_silla';
+    let targetServer = null;
+    let nextClient = null;
+
+    if (strategy === 'por_lotes') {
+      for (let i = 0; i < this.numServers; i++) {
+        const server = this.servers[i];
+        if (server.queue.length > 0) {
+          targetServer = server;
+          nextClient = server.queue.shift();
+          break;
+        }
+      }
+    } else {
+      for (let i = this.numServers - 1; i >= 0; i--) {
+        const server = this.servers[i];
+        if (server.queue.length > 0) {
+          targetServer = server;
+          nextClient = server.queue.shift();
+          break;
+        }
+      }
+    }
+
+    if (nextClient && targetServer) {
+      this.#startService(targetServer, nextClient);
+    }
   }
 
   #sendClientThroughSecurityZone(server, client) {
@@ -705,7 +754,9 @@ export class Simulator {
       const nextServer = this.servers[client.currentStage];
       nextAction = `C${clientId} termina etapa ${client.currentStage} -> Etapa ${client.currentStage + 1}`;
       
-      if (nextServer.state === ServerState.IDLE && nextServer.present) {
+      if (this.flags.singleWorkerChained) {
+        nextServer.queue.push(client);
+      } else if (nextServer.state === ServerState.IDLE && nextServer.present) {
         this.#startService(nextServer, client);
       } else {
         nextServer.queue.push(client);
@@ -717,8 +768,16 @@ export class Simulator {
     }
 
     // Libera al servidor y busca el próximo cliente
-    this.#selectNextClientForServer(server);
-    this.#recordHistory(EventType.SERVICE_END, nextAction);
+    if (this.flags.singleWorkerChained) {
+      server.setState(ServerState.IDLE, this.clock);
+      server.clientInService = null;
+      server.serviceEndTime = null;
+      this.#checkAndStartSingleWorkerChained();
+      this.#recordHistory(EventType.SERVICE_END, nextAction);
+    } else {
+      this.#selectNextClientForServer(server);
+      this.#recordHistory(EventType.SERVICE_END, nextAction);
+    }
   }
 
   /**
@@ -834,7 +893,11 @@ export class Simulator {
       this.#recordHistory(EventType.SERVER_BREAK_END, `S${server.id} regresa -> C${server.clientInService.id} continúa`);
     } else {
       // Si estaba libre, intenta tomar un cliente de la cola
-      this.#selectNextClientForServer(server);
+      if (this.flags.singleWorkerChained) {
+        this.#checkAndStartSingleWorkerChained();
+      } else {
+        this.#selectNextClientForServer(server);
+      }
       this.#recordHistory(EventType.SERVER_BREAK_END, `S${server.id} regresa`);
     }
   }

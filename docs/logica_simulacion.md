@@ -1,6 +1,6 @@
 # Documentación Técnica: Lógica de Simulación y Topologías
 
-Este documento detalla la lógica de funcionamiento del motor de simulación de EventMaster ([Simulator.js](file:///c:/Users/Isaac/OneDrive/Documentos/5to%20Año/EventMaster/eventmaster-web/src/engine/Simulator.js)) respecto al enrutamiento de clientes, selección de servidores y prioridades bajo las distintas topologías soportadas (`AISLADOS`, `COLA_UNICA`, `ENCADENADOS`).
+Este documento detalla la lógica de funcionamiento del motor de simulación de EventMaster ([Simulator.js](../src/engine/Simulator.js)) respecto al enrutamiento de clientes, selección de servidores y prioridades bajo las distintas topologías soportadas (`AISLADOS`, `COLA_UNICA`, `ENCADENADOS`).
 
 ---
 
@@ -83,3 +83,42 @@ Esta topología modela un proceso lineal secuencial de $N$ etapas, donde cada et
 | **Aislada (`AISLADOS`)** | Dirigido por `serverId` del evento, o aleatorio. | Cola individual del servidor asignado (`server.queue`). | Extrae de su propia cola local. Prioriza VIPs locales si la prioridad está activa. |
 | **Cola Única (`COLA_UNICA`)** | Busca el primer servidor libre (`IDLE` y `presente`). Prioridad al ID más bajo. | Cola común VIP (`queues.vip`) o Normal (`queues.default`). | Extrae de la cola VIP común. Si está vacía, extrae de la cola Normal común. |
 | **Encadenada (`ENCADENADOS`)** | Ingresa siempre por la Etapa 1 (Servidor 1). | Cola local del servidor de la etapa actual (`servers[stage].queue`). | Extrae de la cola local de su propia etapa. |
+
+---
+
+## 4. Ejercicio Práctico: Caso del Carpintero (Guía 4, Ejercicio 4)
+
+Este ejercicio es un caso de estudio para analizar cómo modelar las **restricciones físicas de recursos únicos** en un proceso secuencial.
+
+### Enunciado del Ejercicio
+> Un carpintero acaba de recibir el material necesario para realizar 6 sillas. El proceso consiste en armar las sillas (demora entre 30 y 40 minutos cada una). Luego de ello deberá lijarlas (entre 10 y 20 minutos cada una) y por último deberá lustrarlas (entre 5 y 30 minutos cada una).
+>
+> Se desea saber: **¿Cuántas sillas habrá terminado al cabo de 6 horas (360 minutos)?**
+> *Opciones:* a) Ninguna, b) Menos de 6 sillas, c) Todas.
+
+---
+
+### Simulación en EventMaster: Restricción de Operario Único
+El sistema modela este problema bajo la topología `ENCADENADOS` con la bandera `singleWorkerChained: true` activada. Esto asegura que:
+1. **Un solo servidor activo:** A lo sumo **un único servidor** puede estar en estado `OCUPADO` a la vez. El carpintero no puede realizar más de una actividad en paralelo.
+2. **Estrategia configurable:** La simulación permite seleccionar en el panel de configuración cómo organiza su trabajo el operario:
+
+#### Estrategia 1: Silla por Silla (`silla_por_silla` - Escenario B del ejercicio)
+El carpintero completa cada silla de principio a fin antes de comenzar con la siguiente.
+* **Algoritmo del motor:** Cuando el carpintero se libera, busca la cola de la última etapa a la primera (Lustrar $\rightarrow$ Lijar $\rightarrow$ Armar).
+* **Análisis Matemático:** 
+  * Tiempo por silla: $[30 + 10 + 5, 40 + 20 + 30] = [45, 90]$ minutos (Promedio: $67.5$ minutos).
+  * En 6 horas (360 min) terminará un promedio de $360 / 67.5 \approx 5.33$ sillas.
+  * **Conclusión:** Completará **b) Menos de 6 sillas**.
+
+#### Estrategia 2: Por Lotes (`por_lotes` - Escenario C del ejercicio)
+El carpintero realiza una misma tarea sobre todo el lote de 6 sillas antes de avanzar a la siguiente etapa.
+* **Algoritmo del motor:** Cuando el carpintero se libera, busca la cola de la primera etapa a la última (Armar $\rightarrow$ Lijar $\rightarrow$ Lustrar).
+* **Análisis Matemático:**
+  * **Armar 6 sillas:** Toma entre 180 y 240 minutos.
+  * **Lijar 6 sillas:** Toma entre 60 y 120 minutos (acumulando entre 240 y 360 minutos).
+  * **Lustrar 6 sillas:** Ocurre únicamente tras finalizar el armado y lijado total.
+  * **Conclusión:** 
+    * En el peor caso (240 min armado + 120 min lijado = 360 min), finaliza las 6 horas en el lijado sin haber lustrado ninguna. Por lo tanto, habrá terminado **a) Ninguna**.
+    * En promedio, terminará de lijar al minuto 300, dejándole 60 minutos para lustrar (completando unas 3.4 sillas). Por lo tanto, terminará **b) Menos de 6 sillas**.
+
