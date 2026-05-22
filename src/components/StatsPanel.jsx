@@ -11,7 +11,7 @@ export function StatBox({ label, value, color, icon }) {
   );
 }
 
-export function StatsPanel({ currentState, flags, formatTime, vocab }) {
+export function StatsPanel({ currentState, flags, formatTime, vocab, startTime = 0 }) {
   const isFinished = currentState?.isFinished;
   
   const calculateUtilization = () => {
@@ -73,7 +73,7 @@ export function StatsPanel({ currentState, flags, formatTime, vocab }) {
           <h3><ClipboardList size={16}/> Conclusiones Finales</h3>
           <div className="conclusions-grid">
             <div>
-              <p><strong>Resumen en:</strong> {Math.floor(currentState.clock / 60)} minutos</p>
+              <p><strong>Resumen en:</strong> {Math.floor((currentState.clock - startTime) / 60)} minutos</p>
               <p><strong>Total que llegaron:</strong> {currentState.stats.totalArrivals} {(vocab?.client || 'clientes').toLowerCase()}</p>
             </div>
             <div>

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Simulator, SystemTopology, ServerState } from './Simulator.js';
+import { createGenerator, ConstantGenerator, ListGenerator, ExponentialGenerator, UniformGenerator } from '../utils/generators.js';
 
 describe('Simulator Engine Tests', () => {
   const baseConfig = {
@@ -162,5 +163,22 @@ describe('Simulator Engine Tests', () => {
     const arrivals = sim.fel.filter(e => e.type === 'LLEGADA');
     expect(arrivals.some(e => e.time === 30)).toBe(true);
     expect(arrivals.some(e => e.time === 40)).toBe(true);
+  });
+
+  it('should support createGenerator with uniform distribution', () => {
+    const uniformObj = createGenerator('uniform', { min: 10, max: 20 });
+    expect(uniformObj).toBeInstanceOf(UniformGenerator);
+    expect(uniformObj.min).toBe(10);
+    expect(uniformObj.max).toBe(20);
+
+    const uniformArr = createGenerator('uniform', [15, 25]);
+    expect(uniformArr).toBeInstanceOf(UniformGenerator);
+    expect(uniformArr.min).toBe(15);
+    expect(uniformArr.max).toBe(25);
+
+    const uniformSingle = createGenerator('uniform', 30);
+    expect(uniformSingle).toBeInstanceOf(UniformGenerator);
+    expect(uniformSingle.min).toBe(0);
+    expect(uniformSingle.max).toBe(30);
   });
 });

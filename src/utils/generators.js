@@ -73,8 +73,8 @@ export class UniformGenerator extends Generator {
 
 /**
  * Fábrica para crear generadores desde un tipo y un valor.
- * @param {string} type - 'constant' | 'list' | 'exponential'
- * @param {number|array} value - Valor único o array de valores
+ * @param {string} type - 'constant' | 'list' | 'exponential' | 'uniform'
+ * @param {number|array|object} value - Valor único, array de valores, o un objeto/rango {min, max}
  * @returns {Generator} Una instancia de una subclase de Generator.
  */
 export function createGenerator(type, value) {
@@ -82,6 +82,13 @@ export function createGenerator(type, value) {
     case 'constant':    return new ConstantGenerator(value);
     case 'list':        return new ListGenerator(Array.isArray(value) ? value : [value]);
     case 'exponential': return new ExponentialGenerator(value);
+    case 'uniform':
+      if (Array.isArray(value)) {
+        return new UniformGenerator(value[0], value[1]);
+      } else if (value && typeof value === 'object') {
+        return new UniformGenerator(value.min, value.max);
+      }
+      return new UniformGenerator(0, value);
     default:            return new ConstantGenerator(value);
   }
 }

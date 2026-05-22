@@ -21,7 +21,7 @@ function App() {
   const [currentState, setCurrentState] = useState(null);
   const [isRunning, setIsRunning] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
-  const [speed, setSpeed] = useState(100);
+  const [speed, setSpeed] = useState(10);
   const [checkpointRules, setCheckpointRules] = useState(academicPresets.default.checkpointRules);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const intervalRef = useRef(null);
@@ -442,6 +442,7 @@ function App() {
           flags={flags} 
           formatTime={formatTime} 
           vocab={vocab}
+          startTime={config.startTime}
         />
 
         {(() => {
