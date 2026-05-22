@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 export function AdvancedTable({ history, flags, config, vocab }) {
   const numServers = history.length > 0 ? history[0].servers.length : 1;
@@ -94,7 +94,6 @@ export function AdvancedTable({ history, flags, config, vocab }) {
     }
   };
 
-  const felColSpan = (isIsolated ? numServers : 1) + numServers;
   const breaksColSpan = isMultiServer ? numServers * 3 : 3;
 
   return (

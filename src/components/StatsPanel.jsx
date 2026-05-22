@@ -11,14 +11,13 @@ export function StatBox({ label, value, color, icon }) {
   );
 }
 
-export function StatsPanel({ currentState, flags, formatTime, vocab, startTime = 0 }) {
+export function StatsPanel({ currentState, formatTime, vocab, startTime = 0 }) {
   const isFinished = currentState?.isFinished;
-  
-  const calculateUtilization = () => {
-    if (!currentState || currentState.servers.length === 0) return '0.0';
-    const totalUtil = currentState.servers.reduce((acc, s) => acc + parseFloat(s.utilization || 0), 0);
-    return (totalUtil / currentState.servers.length).toFixed(1);
-  };
+  const globalQueueClients = currentState
+    ? [...currentState.queues.vip, ...currentState.queues.default]
+    : [];
+  const localQueueClients = currentState?.servers.flatMap(server => server.queue || []) || [];
+  const totalQueueLength = globalQueueClients.length + localQueueClients.length;
   
   return (
     <section className="stats-section">
@@ -51,7 +50,7 @@ export function StatsPanel({ currentState, flags, formatTime, vocab, startTime =
 
         <StatBox
           label="Cola Total"
-          value={(currentState?.queues.default.length ?? 0) + (currentState?.queues.vip.length ?? 0)}
+          value={totalQueueLength}
           color="purple"
         />
         <StatBox
@@ -84,7 +83,7 @@ export function StatsPanel({ currentState, flags, formatTime, vocab, startTime =
         </div>
       )}
 
-      {currentState && (currentState.queues.default.length > 0 || currentState.queues.vip.length > 0) && (
+      {currentState && totalQueueLength > 0 && (
         <div className="visual-queue">
           <span className="queue-label">Cola:</span>
           <div className="queue-clients">
@@ -95,6 +94,11 @@ export function StatsPanel({ currentState, flags, formatTime, vocab, startTime =
             ))}
             {currentState.queues.default.map((c) => (
               <div key={c.id} className="client-dot" title={`Cliente ${c.id}`}>
+                {c.id}
+              </div>
+            ))}
+            {localQueueClients.map((c) => (
+              <div key={`local-${c.id}`} className={`client-dot${c.priority === 'B' ? ' vip' : ''}`} title={`Cliente ${c.id}`}>
                 {c.id}
               </div>
             ))}

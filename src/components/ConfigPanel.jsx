@@ -82,6 +82,8 @@ export function ConfigPanel({
               <TimeField 
                 value={config.arrivalInterval} 
                 onChange={(val) => updateConfig('arrivalInterval', val)}
+                distType={config.arrivalDistType || 'uniform'}
+                onDistTypeChange={(val) => updateConfig('arrivalDistType', val)}
                 placeholder="30 - 60"
               />
             </label>
@@ -98,6 +100,8 @@ export function ConfigPanel({
               <TimeField 
                 value={config.serviceTime} 
                 onChange={(val) => updateConfig('serviceTime', val)}
+                distType={config.serviceDistType || 'uniform'}
+                onDistTypeChange={(val) => updateConfig('serviceDistType', val)}
                 placeholder="20 - 40"
               />
             </label>
@@ -172,6 +176,8 @@ export function ConfigPanel({
                   <TimeField 
                     value={config.workTime} 
                     onChange={(val) => updateConfig('workTime', val)}
+                    distType={config.workDistType || 'uniform'}
+                    onDistTypeChange={(val) => updateConfig('workDistType', val)}
                     placeholder="600"
                   />
                 </label>
@@ -180,6 +186,8 @@ export function ConfigPanel({
                   <TimeField 
                     value={config.restTime} 
                     onChange={(val) => updateConfig('restTime', val)}
+                    distType={config.restDistType || 'uniform'}
+                    onDistTypeChange={(val) => updateConfig('restDistType', val)}
                     placeholder="60"
                   />
                 </label>
@@ -204,6 +212,8 @@ export function ConfigPanel({
                 <TimeField 
                   value={config.maxWaitTime} 
                   onChange={(val) => updateConfig('maxWaitTime', val)}
+                  distType={config.patienceDistType || 'uniform'}
+                  onDistTypeChange={(val) => updateConfig('patienceDistType', val)}
                   placeholder="∞"
                 />
               </label>
@@ -224,6 +234,8 @@ export function ConfigPanel({
                 <TimeField 
                   value={config.travelTime} 
                   onChange={(val) => updateConfig('travelTime', val)}
+                  distType={config.travelDistType || 'uniform'}
+                  onDistTypeChange={(val) => updateConfig('travelDistType', val)}
                   placeholder="10"
                 />
               </label>

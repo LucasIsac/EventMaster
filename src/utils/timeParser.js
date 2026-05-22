@@ -8,26 +8,37 @@ export function parseTimeInput(raw) {
   
   const str = raw.trim();
   if (str === '') return null;
+  if (str === '∞') return { mode: 'constant', value: Infinity };
+  const numberPattern = /^(?:Infinity|\d+(?:\.\d+)?|\.\d+)$/;
 
-  // Manejo de rangos (ej: "10 - 20")
-  if (str.includes(' - ')) {
-    const parts = str.split(' - ').map(s => parseFloat(s.trim()));
-    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1]) && parts[1] > parts[0]) {
-      return { mode: 'range', min: parts[0], max: parts[1] };
+  // Manejo de rangos (ej: "10 - 20" o "10-20")
+  const rangeMatch = str.match(/^(\d+(?:\.\d+)?|\.\d+)\s*-\s*(\d+(?:\.\d+)?|\.\d+)$/);
+  if (rangeMatch) {
+    const min = parseFloat(rangeMatch[1]);
+    const max = parseFloat(rangeMatch[2]);
+    if (max > min) {
+      return { mode: 'range', min, max };
     }
     return { error: 'El mínimo debe ser menor al máximo' };
   }
 
+  if (str.includes('-') && !str.startsWith('-')) {
+    return { error: 'Formato de rango inválido' };
+  }
+
   // Manejo de listas de valores (ej: "10, 20, 30")
   if (str.includes(',')) {
-    const values = str.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
-    if (values.length > 0) return { mode: 'list', values };
+    const parts = str.split(',').map(s => s.trim());
+    const values = parts.map(s => parseFloat(s));
+    if (values.length > 0 && values.every((n, idx) => numberPattern.test(parts[idx]) && !isNaN(n) && n >= 0)) {
+      return { mode: 'list', values };
+    }
     return { error: 'Formato inválido' };
   }
 
   // Manejo de valor constante (ej: "15")
   const num = parseFloat(str);
-  if (!isNaN(num)) return { mode: 'constant', value: num };
+  if (numberPattern.test(str) && !isNaN(num) && num >= 0) return { mode: 'constant', value: num };
   
   return { error: 'Formato inválido' };
 }
@@ -78,9 +89,10 @@ export function getModeLabel(parsed) {
   if (parsed.error) return { text: parsed.error, type: 'error' };
   
   switch (parsed.mode) {
-    case 'constant':
+    case 'constant': {
       const displayVal = parsed.value === Infinity ? '∞' : parsed.value;
       return { text: `Constante: ${displayVal}`, type: 'constant' };
+    }
     case 'list':
       return { text: `Lista: ${parsed.values.length} valores`, type: 'list' };
     case 'range':

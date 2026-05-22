@@ -106,6 +106,7 @@ function App() {
     if (!simulator) return;
     if (simulator.isFinished()) {
       setIsRunning(false);
+      setCurrentState(simulator.getCurrentState());
       return;
     }
     simulator.step();
@@ -199,8 +200,9 @@ function App() {
    */
   const getProgress = () => {
     if (!currentState) return 0;
-    const total = config.startTime + config.maxTime;
-    const current = currentState.clock;
+    const total = config.maxTime;
+    const current = currentState.clock - config.startTime;
+    if (total <= 0) return 100;
     return Math.min(100, (current / total) * 100);
   };
 
@@ -319,7 +321,6 @@ function App() {
     // 2. Mapear Filas
     const rows = history.map(entry => {
       const row = [];
-      const origin = entry.eventType;
       const felEvents = getFelEvents(entry);
 
       // Hora actual

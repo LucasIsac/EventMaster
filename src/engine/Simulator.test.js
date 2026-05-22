@@ -1,6 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { Simulator, SystemTopology, ServerState } from './Simulator.js';
 import { createGenerator, ConstantGenerator, ListGenerator, ExponentialGenerator, UniformGenerator } from '../utils/generators.js';
+import { parseTimeInput } from '../utils/timeParser.js';
+import { academicPresets } from '../presets.js';
 
 describe('Simulator Engine Tests', () => {
   const baseConfig = {
@@ -16,6 +18,34 @@ describe('Simulator Engine Tests', () => {
   };
 
   const noBreaks = { hasServerBreaks: false, hasClientAbandonment: true, hasPriority: false };
+
+  const minTime = (events) => events.length > 0 ? Math.min(...events.map(e => e.time)) : null;
+  const serverCode = (server) => {
+    if (server.state === ServerState.BUSY) return `C${server.clientId}`;
+    if (server.state === ServerState.BREAK) return 'A';
+    return '0';
+  };
+  const snapshot = (entry) => ({
+    t: entry.time,
+    e: entry.eventType,
+    q: entry.queueLength,
+    servers: entry.servers.map(serverCode),
+    serverQ: entry.servers.map(server => server.queue.length),
+    nextArrival: minTime(entry.fel.filter(e => e.type === 'LLEGADA' || e.type === 'LLEGADA_VIP')),
+    serviceEnds: entry.servers.map(server => minTime(
+      entry.fel.filter(e => e.type === 'FIN_SERVICIO' && e.data?.serverId === server.id)
+    )),
+    nextBreaks: entry.servers.map(server => server.nextBreakTime ?? null),
+    nextWorks: entry.servers.map(server => server.nextWorkTime ?? null),
+    action: entry.action
+  });
+
+  const runPreset = (presetId) => {
+    const preset = academicPresets[presetId];
+    const sim = new Simulator(preset.config, preset.flags, preset.initialState);
+    const results = sim.run();
+    return { sim, results };
+  };
 
   it('should handle queue abandonment after 10 minutes', () => {
     const config = { ...baseConfig, arrivalInterval: '10', serviceTime: '1000' };
@@ -72,8 +102,9 @@ describe('Simulator Engine Tests', () => {
     sim.run();
     
     // C1 llega t=1000. Etapa 1 fin t=1050. Etapa 2 fin t=1100.
-    // clientsServed cuenta cada fin de servicio (1 por etapa)
-    expect(sim.stats.clientsServed).toBe(2);
+    // clientsServed cuenta clientes que salen del sistema, no etapas intermedias.
+    expect(sim.stats.clientsServed).toBe(1);
+    expect(sim.stats.serviceCompletions).toBe(2);
     const serviceEnds = sim.history.filter(h => h.eventType === 'FIN_SERVICIO');
     expect(serviceEnds.length).toBe(2); 
   });
@@ -180,5 +211,146 @@ describe('Simulator Engine Tests', () => {
     expect(uniformSingle).toBeInstanceOf(UniformGenerator);
     expect(uniformSingle.min).toBe(0);
     expect(uniformSingle.max).toBe(30);
+  });
+
+  it('should move clients through the security zone before service', () => {
+    const config = {
+      ...baseConfig,
+      maxTime: 40,
+      arrivalInterval: '10',
+      serviceTime: '5',
+      travelTime: '10'
+    };
+    const sim = new Simulator(config, { ...noBreaks, hasSecurityZone: true, hasClientAbandonment: false });
+
+    sim.run();
+
+    expect(sim.stats.clientsServed).toBeGreaterThan(0);
+    expect(sim.history.some(h => h.eventType === 'LLEGADA_PS')).toBe(true);
+    expect(sim.servers[0].clientsServed).toBeGreaterThan(0);
+  });
+
+  it('should keep priority as one arrival stream', () => {
+    const config = { ...baseConfig, maxTime: 100, arrivalInterval: '10', serviceTime: '1000' };
+    const sim = new Simulator(config, { ...noBreaks, hasPriority: true, hasClientAbandonment: false });
+
+    sim.run();
+
+    expect(sim.stats.totalArrivals).toBe(10);
+  });
+
+  it('should not suppress arrivals while the server is initially busy', () => {
+    const config = { ...baseConfig, maxTime: 50, arrivalInterval: '10', serviceTime: '1000' };
+    const initialState = { serverBusy: true, busyUntil: 50 };
+    const sim = new Simulator(config, { ...noBreaks, hasClientAbandonment: false }, initialState);
+
+    sim.run();
+
+    expect(sim.stats.totalArrivals).toBe(5);
+  });
+
+  it('should advance final statistics to the configured horizon', () => {
+    const config = { ...baseConfig, maxTime: 100, serviceTime: '200' };
+    const initialState = { serverBusy: true, busyUntil: 200 };
+    const sim = new Simulator(config, { ...noBreaks, disableArrivals: true, hasClientAbandonment: false }, initialState);
+    const results = sim.run();
+
+    expect(results.stats.totalTime).toBe(100);
+    expect(results.stats.clientsServed).toBe(0);
+    expect(results.stats.serverStats[0].utilization).toBe('100.0');
+  });
+
+  it('should abandon initially queued clients whose patience already expired', () => {
+    const initialState = { clientsInQueue: 1, initialWaitTime: 601, serverBusy: false };
+    const sim = new Simulator(baseConfig, { ...noBreaks, disableArrivals: true }, initialState);
+
+    sim.run();
+
+    expect(sim.stats.clientsAbandoned).toBe(1);
+    expect(sim.stats.clientsServed).toBe(0);
+  });
+
+  it('golden table: TP1 Ej1 single queue matches exact first rows and totals', () => {
+    const { sim, results } = runPreset('tp1_ej1');
+
+    expect(sim.history.slice(0, 8).map(snapshot)).toEqual([
+      { t: 28800, e: 'INICIO', q: 3, servers: ['C4'], serverQ: [0], nextArrival: 29100, serviceEnds: [28980], nextBreaks: [null], nextWorks: [null], action: 'Estado inicial' },
+      { t: 28980, e: 'FIN_SERVICIO', q: 2, servers: ['C1'], serverQ: [0], nextArrival: 29100, serviceEnds: [29020], nextBreaks: [null], nextWorks: [null], action: 'C4 termina servicio y sale del sistema' },
+      { t: 29020, e: 'FIN_SERVICIO', q: 1, servers: ['C2'], serverQ: [0], nextArrival: 29100, serviceEnds: [29060], nextBreaks: [null], nextWorks: [null], action: 'C1 termina servicio y sale del sistema' },
+      { t: 29060, e: 'FIN_SERVICIO', q: 0, servers: ['C3'], serverQ: [0], nextArrival: 29100, serviceEnds: [29100], nextBreaks: [null], nextWorks: [null], action: 'C2 termina servicio y sale del sistema' },
+      { t: 29100, e: 'FIN_SERVICIO', q: 0, servers: ['0'], serverQ: [0], nextArrival: 29100, serviceEnds: [null], nextBreaks: [null], nextWorks: [null], action: 'C3 termina servicio y sale del sistema' },
+      { t: 29100, e: 'LLEGADA', q: 0, servers: ['C5'], serverQ: [0], nextArrival: 29145, serviceEnds: [29140], nextBreaks: [null], nextWorks: [null], action: 'C5 llega -> S1' },
+      { t: 29140, e: 'FIN_SERVICIO', q: 0, servers: ['0'], serverQ: [0], nextArrival: 29145, serviceEnds: [null], nextBreaks: [null], nextWorks: [null], action: 'C5 termina servicio y sale del sistema' },
+      { t: 29145, e: 'LLEGADA', q: 0, servers: ['C6'], serverQ: [0], nextArrival: 29190, serviceEnds: [29185], nextBreaks: [null], nextWorks: [null], action: 'C6 llega -> S1' }
+    ]);
+    expect(results.stats.clientsServed).toBe(77);
+    expect(results.stats.totalArrivals).toBe(74);
+    expect(results.stats.totalTime).toBe(3600);
+  });
+
+  it('golden table: Guia 4 Ej1B captures break ordering and second-break metric exactly', () => {
+    const { sim } = runPreset('guia4_ej1_b');
+
+    expect(sim.history.slice(0, 9).map(snapshot)).toEqual([
+      { t: 0, e: 'INICIO', q: 0, servers: ['0'], serverQ: [0], nextArrival: 60, serviceEnds: [null], nextBreaks: [60], nextWorks: [null], action: 'Estado inicial' },
+      { t: 60, e: 'LLEGADA', q: 0, servers: ['C1'], serverQ: [0], nextArrival: 120, serviceEnds: [120], nextBreaks: [60], nextWorks: [null], action: 'C1 llega -> S1' },
+      { t: 60, e: 'SALIDA_SERVIDOR', q: 0, servers: ['A'], serverQ: [0], nextArrival: 120, serviceEnds: [null], nextBreaks: [null], nextWorks: [120], action: 'S1 sale (C1 pausado)' },
+      { t: 120, e: 'LLEGADA_SERVIDOR', q: 0, servers: ['C1'], serverQ: [0], nextArrival: 120, serviceEnds: [180], nextBreaks: [180], nextWorks: [null], action: 'S1 regresa -> C1 continúa' },
+      { t: 120, e: 'LLEGADA', q: 1, servers: ['C1'], serverQ: [0], nextArrival: 180, serviceEnds: [180], nextBreaks: [180], nextWorks: [null], action: 'C2 llega -> cola' },
+      { t: 180, e: 'FIN_SERVICIO', q: 0, servers: ['C2'], serverQ: [0], nextArrival: 180, serviceEnds: [240], nextBreaks: [180], nextWorks: [null], action: 'C1 termina servicio y sale del sistema' },
+      { t: 180, e: 'LLEGADA', q: 1, servers: ['C2'], serverQ: [0], nextArrival: 240, serviceEnds: [240], nextBreaks: [180], nextWorks: [null], action: 'C3 llega -> cola' },
+      { t: 180, e: 'SALIDA_SERVIDOR', q: 1, servers: ['A'], serverQ: [0], nextArrival: 240, serviceEnds: [null], nextBreaks: [null], nextWorks: [240], action: 'S1 sale (C2 pausado)' },
+      { t: 240, e: 'LLEGADA_SERVIDOR', q: 1, servers: ['C2'], serverQ: [0], nextArrival: 240, serviceEnds: [300], nextBreaks: [300], nextWorks: [null], action: 'S1 regresa -> C2 continúa' }
+    ]);
+    expect(sim.stats.clientsServedUntilSecondBreak).toBe(1);
+    expect(sim.stats.clientsServed).toBe(29);
+    expect(sim.stats.clientsAbandoned).toBe(20);
+    expect(sim.stats.workCycles).toBe(30);
+    expect(sim.stats.restCycles).toBe(30);
+    expect(sim.stats.totalArrivals).toBe(60);
+  });
+
+  it('golden table: Guia 3 Ej2 single queue with 3 servers matches exact event matrix', () => {
+    const { sim } = runPreset('guia3_ej2');
+
+    expect(sim.history.slice(0, 10).map(snapshot)).toEqual([
+      { t: 37800, e: 'INICIO', q: 4, servers: ['C1', 'C6', 'C7'], serverQ: [0, 0, 0], nextArrival: 37820, serviceEnds: [37860, 37870, 37890], nextBreaks: [null, null, null], nextWorks: [null, null, null], action: 'Estado inicial' },
+      { t: 37820, e: 'LLEGADA', q: 5, servers: ['C1', 'C6', 'C7'], serverQ: [0, 0, 0], nextArrival: 37880, serviceEnds: [37860, 37870, 37890], nextBreaks: [null, null, null], nextWorks: [null, null, null], action: 'C8 llega -> cola' },
+      { t: 37860, e: 'FIN_SERVICIO', q: 4, servers: ['C2', 'C6', 'C7'], serverQ: [0, 0, 0], nextArrival: 37880, serviceEnds: [37871, 37870, 37890], nextBreaks: [null, null, null], nextWorks: [null, null, null], action: 'C1 termina servicio y sale del sistema' },
+      { t: 37870, e: 'FIN_SERVICIO', q: 3, servers: ['C2', 'C3', 'C7'], serverQ: [0, 0, 0], nextArrival: 37880, serviceEnds: [37871, 37882, 37890], nextBreaks: [null, null, null], nextWorks: [null, null, null], action: 'C6 termina servicio y sale del sistema' },
+      { t: 37871, e: 'FIN_SERVICIO', q: 2, servers: ['C4', 'C3', 'C7'], serverQ: [0, 0, 0], nextArrival: 37880, serviceEnds: [37882, 37882, 37890], nextBreaks: [null, null, null], nextWorks: [null, null, null], action: 'C2 termina servicio y sale del sistema' },
+      { t: 37880, e: 'LLEGADA', q: 3, servers: ['C4', 'C3', 'C7'], serverQ: [0, 0, 0], nextArrival: 37886, serviceEnds: [37882, 37882, 37890], nextBreaks: [null, null, null], nextWorks: [null, null, null], action: 'C9 llega -> cola' },
+      { t: 37882, e: 'FIN_SERVICIO', q: 2, servers: ['C4', 'C5', 'C7'], serverQ: [0, 0, 0], nextArrival: 37886, serviceEnds: [37882, 37894, 37890], nextBreaks: [null, null, null], nextWorks: [null, null, null], action: 'C3 termina servicio y sale del sistema' },
+      { t: 37882, e: 'FIN_SERVICIO', q: 1, servers: ['C8', 'C5', 'C7'], serverQ: [0, 0, 0], nextArrival: 37886, serviceEnds: [37893, 37894, 37890], nextBreaks: [null, null, null], nextWorks: [null, null, null], action: 'C4 termina servicio y sale del sistema' },
+      { t: 37886, e: 'LLEGADA', q: 2, servers: ['C8', 'C5', 'C7'], serverQ: [0, 0, 0], nextArrival: 37901, serviceEnds: [37893, 37894, 37890], nextBreaks: [null, null, null], nextWorks: [null, null, null], action: 'C10 llega -> cola' },
+      { t: 37890, e: 'FIN_SERVICIO', q: 1, servers: ['C8', 'C5', 'C9'], serverQ: [0, 0, 0], nextArrival: 37901, serviceEnds: [37893, 37894, 37904], nextBreaks: [null, null, null], nextWorks: [null, null, null], action: 'C7 termina servicio y sale del sistema' }
+    ]);
+    expect(sim.stats.clientsServed).toBe(280);
+    expect(sim.stats.totalArrivals).toBe(274);
+  });
+
+  it('golden table: Guia 3 Ej3 chained stages preserve each client stage exactly', () => {
+    const { sim } = runPreset('guia3_ej3');
+
+    expect(sim.history.slice(0, 10).map(snapshot)).toEqual([
+      { t: 37800, e: 'INICIO', q: 6, servers: ['C1', 'C4', 'C6'], serverQ: [2, 1, 3], nextArrival: 37820, serviceEnds: [37860, 37870, 37890], nextBreaks: [null, null, null], nextWorks: [null, null, null], action: 'Estado inicial' },
+      { t: 37820, e: 'LLEGADA', q: 7, servers: ['C1', 'C4', 'C6'], serverQ: [3, 1, 3], nextArrival: 37855, serviceEnds: [37860, 37870, 37890], nextBreaks: [null, null, null], nextWorks: [null, null, null], action: 'C10 llega -> Etapa 1 (S1)' },
+      { t: 37855, e: 'LLEGADA', q: 8, servers: ['C1', 'C4', 'C6'], serverQ: [4, 1, 3], nextArrival: 37871, serviceEnds: [37860, 37870, 37890], nextBreaks: [null, null, null], nextWorks: [null, null, null], action: 'C11 llega -> Etapa 1 (S1)' },
+      { t: 37860, e: 'FIN_SERVICIO', q: 8, servers: ['C2', 'C4', 'C6'], serverQ: [3, 2, 3], nextArrival: 37871, serviceEnds: [37880, 37870, 37890], nextBreaks: [null, null, null], nextWorks: [null, null, null], action: 'C1 termina etapa 1 -> Etapa 2' },
+      { t: 37870, e: 'FIN_SERVICIO', q: 8, servers: ['C2', 'C5', 'C6'], serverQ: [3, 1, 4], nextArrival: 37871, serviceEnds: [37880, 37881, 37890], nextBreaks: [null, null, null], nextWorks: [null, null, null], action: 'C4 termina etapa 2 -> Etapa 3' },
+      { t: 37871, e: 'LLEGADA', q: 9, servers: ['C2', 'C5', 'C6'], serverQ: [4, 1, 4], nextArrival: 37912, serviceEnds: [37880, 37881, 37890], nextBreaks: [null, null, null], nextWorks: [null, null, null], action: 'C12 llega -> Etapa 1 (S1)' },
+      { t: 37880, e: 'FIN_SERVICIO', q: 9, servers: ['C3', 'C5', 'C6'], serverQ: [3, 2, 4], nextArrival: 37912, serviceEnds: [37900, 37881, 37890], nextBreaks: [null, null, null], nextWorks: [null, null, null], action: 'C2 termina etapa 1 -> Etapa 2' },
+      { t: 37881, e: 'FIN_SERVICIO', q: 9, servers: ['C3', 'C1', 'C6'], serverQ: [3, 1, 5], nextArrival: 37912, serviceEnds: [37900, 37892, 37890], nextBreaks: [null, null, null], nextWorks: [null, null, null], action: 'C5 termina etapa 2 -> Etapa 3' },
+      { t: 37890, e: 'FIN_SERVICIO', q: 8, servers: ['C3', 'C1', 'C7'], serverQ: [3, 1, 4], nextArrival: 37912, serviceEnds: [37900, 37892, 37897], nextBreaks: [null, null, null], nextWorks: [null, null, null], action: 'C6 termina servicio y sale del sistema' },
+      { t: 37892, e: 'FIN_SERVICIO', q: 8, servers: ['C3', 'C2', 'C7'], serverQ: [3, 0, 5], nextArrival: 37912, serviceEnds: [37900, 37903, 37897], nextBreaks: [null, null, null], nextWorks: [null, null, null], action: 'C1 termina etapa 2 -> Etapa 3' }
+    ]);
+    expect(sim.stats.clientsServed).toBe(63);
+    expect(sim.stats.serviceCompletions).toBe(179);
+    expect(sim.stats.totalArrivals).toBe(54);
+  });
+
+  it('should parse compact ranges without silently converting them to constants', () => {
+    expect(parseTimeInput('30-60')).toEqual({ mode: 'range', min: 30, max: 60 });
+    expect(parseTimeInput('60 - 30').error).toBeDefined();
   });
 });

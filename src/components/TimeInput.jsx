@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useRef } from 'react';
 
 /**
  * Componente de entrada de tiempo segmentado (HH:MM:SS).
@@ -12,13 +12,16 @@ function TimeInput({ value, onChange }) {
   /**
    * Descompone un valor en segundos en horas, minutos y segundos.
    */
-  const getParts = (val) => ({
-    h: Math.floor(val / 3600),
-    m: Math.floor((val % 3600) / 60),
-    s: val % 60
-  });
+  const getParts = (val) => {
+    const safeValue = Number.isFinite(val) ? val : 0;
+    return {
+      h: Math.floor(safeValue / 3600),
+      m: Math.floor((safeValue % 3600) / 60),
+      s: safeValue % 60
+    };
+  };
 
-  const [parts, setParts] = useState(() => getParts(value));
+  const parts = getParts(value);
 
   /**
    * Actualiza una parte específica del tiempo y notifica el cambio al padre en segundos.
@@ -30,8 +33,7 @@ function TimeInput({ value, onChange }) {
     if (part === 'h') num = Math.min(23, Math.max(0, num));
     else num = Math.min(59, Math.max(0, num));
     
-    const newParts = { ...parts, [part]: num };
-    setParts(newParts);
+    const newParts = { ...getParts(value), [part]: num };
     // Notifica el total de segundos
     onChange(newParts.h * 3600 + newParts.m * 60 + newParts.s);
   };

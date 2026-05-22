@@ -1,12 +1,10 @@
-import { useState } from 'react';
 import { parseTimeInput, getModeLabel } from '../utils/timeParser';
 
 /**
  * Componente de entrada de texto inteligente que detecta si el usuario ingresa
  * un valor constante, una lista de valores o un rango, y permite elegir la distribución.
  */
-function TimeField({ value, onChange, placeholder }) {
-  const [distType, setDistType] = useState('uniform');
+function TimeField({ value, onChange, placeholder, distType = 'uniform', onDistTypeChange }) {
   const parsed = parseTimeInput(value);
   const modeInfo = getModeLabel(parsed);
 
@@ -47,14 +45,14 @@ function TimeField({ value, onChange, placeholder }) {
                 <button
                   type="button"
                   className={distType === 'uniform' ? 'active' : ''}
-                  onClick={() => setDistType('uniform')}
+                  onClick={() => onDistTypeChange?.('uniform')}
                 >
                   Uniforme
                 </button>
                 <button
                   type="button"
                   className={distType === 'exponential' ? 'active' : ''}
-                  onClick={() => setDistType('exponential')}
+                  onClick={() => onDistTypeChange?.('exponential')}
                 >
                   Exponencial
                 </button>
