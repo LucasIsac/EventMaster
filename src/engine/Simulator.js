@@ -1,51 +1,83 @@
 import { ConstantGenerator, ListGenerator, UniformGenerator, ExponentialGenerator } from '../utils/generators.js';
 import { parseTimeInput } from '../utils/timeParser.js';
 
-// Posibles estados del servidor
+// ============================================================================
+// ENUMS Y CONSTANTES DEL MOTOR DE SIMULACIÓN
+// ============================================================================
+
+/**
+ * Representa los posibles estados en los que puede encontrarse un servidor (puesto de servicio).
+ * - LIBRE (IDLE): Listo para atender a un nuevo cliente.
+ * - OCUPADO (BUSY): Atendiendo activamente a un cliente.
+ * - AUSENTE (BREAK): Fuera de servicio temporalmente por un descanso programado.
+ */
 export const ServerState = {
   IDLE: 'LIBRE',
   BUSY: 'OCUPADO',
   BREAK: 'AUSENTE'
 };
 
-// Topologías del sistema
+/**
+ * Define las topologías del sistema soportadas, que dictan el flujo de los clientes y
+ * la estructura de las colas.
+ * - AISLADOS: Cada servidor tiene su propia cola individual e independiente.
+ * - COLA_UNICA: Todos los servidores comparten una única cola común.
+ * - ENCADENADOS: Los servidores representan etapas secuenciales (línea de producción).
+ */
 export const SystemTopology = {
-  ISOLATED: 'AISLADOS', // Sistemas independientes en paralelo
-  SINGLE_QUEUE: 'COLA_UNICA', // Cola única, múltiples servidores (Supermercado)
-  CHAINED: 'ENCADENADOS' // Puestos sucesivos (Secuencial)
+  ISOLATED: 'AISLADOS',
+  SINGLE_QUEUE: 'COLA_UNICA',
+  CHAINED: 'ENCADENADOS'
 };
 
-// Prioridades de los clientes
+/**
+ * Clasificación de la prioridad de los clientes para determinar el orden de atención en colas.
+ * - NORMAL (A): Clientes estándar.
+ * - VIP (B): Clientes preferenciales que se ubican al inicio de las colas.
+ */
 export const ClientPriority = {
   NORMAL: 'A',
   VIP: 'B'
 };
 
-// Tipos de eventos para la Lista de Eventos Futuros (FEL)
+/**
+ * Tipos de eventos manejados por la Lista de Eventos Futuros (FEL - Future Event List).
+ * Cada evento representa un cambio de estado discreto en el tiempo de simulación.
+ */
 export const EventType = {
-  ARRIVAL: 'LLEGADA',
-  ARRIVAL_VIP: 'LLEGADA_VIP',
-  SERVICE_END: 'FIN_SERVICIO',
-  SERVER_BREAK_START: 'SALIDA_SERVIDOR',
-  SERVER_BREAK_END: 'LLEGADA_SERVIDOR',
-  ABANDONMENT: 'ABANDONO',
-  ENTER_SZ: 'ENTER_SZ', // Entrada a Zona de Seguridad
-  ARRIVAL_PS: 'LLEGADA_PS' // Llegada al Punto de Servicio
+  ARRIVAL: 'LLEGADA',                       // Llegada de un cliente normal
+  ARRIVAL_VIP: 'LLEGADA_VIP',               // Llegada de un cliente VIP
+  SERVICE_END: 'FIN_SERVICIO',              // Finalización de la atención de un cliente en un servidor
+  SERVER_BREAK_START: 'SALIDA_SERVIDOR',    // Inicio del descanso programado de un servidor
+  SERVER_BREAK_END: 'LLEGADA_SERVIDOR',     // Fin del descanso de un servidor y su retorno
+  ABANDONMENT: 'ABANDONO',                  // Salida prematura de la cola por vencimiento de paciencia
+  ENTER_SZ: 'ENTER_SZ',                     // Entrada a la Zona de Seguridad (Problema 5 - Reservado)
+  ARRIVAL_PS: 'LLEGADA_PS'                  // Llegada al Punto de Servicio (Problema 5 - Reservado)
 };
 
+// Contadores globales auto-incrementales para identificar clientes y eventos de forma unívoca.
 let clientIdCounter = 0;
 let eventIdCounter = 0;
 
-// Reinicia los contadores globales
+/**
+ * Reinicia los contadores globales. Se ejecuta al iniciar una nueva simulación para evitar
+ * que los IDs sigan creciendo indefinidamente entre ejecuciones consecutivas.
+ */
 export function resetCounters() {
   clientIdCounter = 0;
   eventIdCounter = 0;
 }
 
 /**
- * Crea un evento para la FEL.
+ * Crea una estructura estandarizada para un evento de la FEL.
+ * @param {number} time - El instante de tiempo absoluto en segundos en que ocurrirá el evento.
+ * @param {string} type - Tipo de evento (tomado de EventType).
+ * @param {Object} [data={}] - Información contextual adicional del evento (ej. clientId, serverId).
+ * @returns {Object} El objeto evento configurado con prioridad de desempate interna.
  */
 function createEvent(time, type, data = {}) {
+  // Las prioridades definen qué evento procesar primero si ocurren exactamente en el mismo segundo.
+  // Un valor menor indica mayor prioridad de ejecución (ej. FIN_SERVICIO se procesa antes que una LLEGADA).
   const priorities = {
     [EventType.SERVICE_END]: 1,
     [EventType.SERVER_BREAK_END]: 2,
@@ -63,27 +95,49 @@ function createEvent(time, type, data = {}) {
   };
 }
 
+// ============================================================================
+// CLASE SERVER (PUESTO DE SERVICIO)
+// ============================================================================
+
 /**
- * Representa un puesto de servicio (servidor).
+ * Representa un puesto de servicio (servidor) individual en la simulación.
+ * Rastrea su estado de ocupación, presencia física, cliente actual y métricas de desempeño.
  */
 class Server {
+  /**
+   * Crea un nuevo servidor con sus configuraciones y cola correspondiente.
+   * @param {number} id - Identificador numérico del servidor (1-indexado).
+   * @param {Object} generators - Mapeo de generadores de tiempos del sistema.
+   */
   constructor(id, generators) {
     this.id = id;
-    this.state = ServerState.IDLE;
-    this.present = true;
-    this.clientInService = null;
-    this.serviceEndTime = null;
-    this.nextBreakTime = null;
-    this.nextWorkTime = null;
-    this.pausedServiceRemaining = null;
-    this.pausedClient = null;
-    this.generators = generators;
-    this.clientsServed = 0;
-    this.busyTime = 0;
-    this.lastStateChange = 0;
-    this.queue = [];
+    this.state = ServerState.IDLE; // Inicia desocupado (LIBRE)
+    this.present = true;           // Indica si el servidor está trabajando (no está de descanso)
+    this.clientInService = null;   // Cliente actualmente atendido (null si está libre o ausente)
+    this.serviceEndTime = null;    // Instante absoluto en que terminará la atención actual
+    
+    // Tiempos planificados para descansos (control de ciclos)
+    this.nextBreakTime = null;     // Instante absoluto para iniciar el siguiente descanso
+    this.nextWorkTime = null;      // Instante absoluto en que finalizará el descanso actual
+    
+    // Variables para manejar la interrupción/pausa de servicio por descanso
+    this.pausedServiceRemaining = null; // Segundos restantes de atención que faltaban cuando fue interrumpido
+    this.pausedClient = null;           // Cliente cuyo servicio fue pausado
+    
+    this.generators = generators;  // Referencia a los generadores de tiempos
+    
+    // Métricas del servidor para reportes de desempeño final e intermedios
+    this.clientsServed = 0;        // Cantidad acumulada de clientes que completaron su atención aquí
+    this.busyTime = 0;             // Tiempo total acumulado (en segundos) que el servidor pasó ocupado
+    this.lastStateChange = 0;      // Marca de tiempo de la última vez que cambió su estado (para cálculo de integrales de ocupación)
+    
+    this.queue = [];               // Cola local del servidor (utilizada en AISLADOS y ENCADENADOS)
   }
 
+  /**
+   * Actualiza el tiempo acumulado de ocupación (busyTime) en base al reloj actual.
+   * @param {number} currentTime - El tiempo actual de la simulación.
+   */
   updateBusyTime(currentTime) {
     if (this.state === ServerState.BUSY) {
       this.busyTime += (currentTime - this.lastStateChange);
@@ -91,16 +145,35 @@ class Server {
     this.lastStateChange = currentTime;
   }
 
+  /**
+   * Modifica el estado del servidor de forma segura, actualizando previamente
+   * el acumulador de tiempo ocupado para garantizar la precisión de la métrica de utilización.
+   * @param {string} newState - El nuevo estado a aplicar (ServerState).
+   * @param {number} currentTime - El tiempo actual de la simulación.
+   */
   setState(newState, currentTime) {
     this.updateBusyTime(currentTime);
     this.state = newState;
   }
 }
 
+// ============================================================================
+// CLASE SIMULATOR (MOTOR PRINCIPAL)
+// ============================================================================
+
 /**
- * Clase principal que gestiona la lógica de la simulación por eventos discretos.
+ * Motor de simulación de eventos discretos (DES).
+ * Gestiona el paso del tiempo, el ciclo de eventos, el enrutamiento de clientes según
+ * la topología, la lógica de descansos/abandonos y la recolección de estadísticas del sistema.
  */
 export class Simulator {
+  /**
+   * Inicializa la instancia de simulación con las configuraciones y estados iniciales.
+   * @param {Object} config - Configuración de tiempos y topología (startTime, maxTime, numServers, etc.).
+   * @param {Object} flags - Flags funcionales (hasPriority, hasServerBreaks, hasClientAbandonment, hasSecurityZone).
+   * @param {Object} [initialState={}] - Carga inicial de cola, tiempos remanentes y servidores ocupados.
+   * @param {Object} [generators={}] - Generadores manuales preestablecidos.
+   */
   constructor(config, flags, initialState = {}, generators = {}) {
     this.config = { ...config };
     this.flags = { ...flags };
@@ -109,7 +182,11 @@ export class Simulator {
     this.numServers = parseInt(config.numServers) || 1;
 
     /**
-     * Helper para obtener un generador basado en un valor de entrada.
+     * Helper interno que traduce las cadenas de texto ingresadas en la UI (por ejemplo, "30-90", "10,20", "45")
+     * en instancias de generadores de tiempos (Constant, List, Uniform o Exponential).
+     * @param {string|number} inputValue - Valor configurado por el usuario.
+     * @param {string} [distType='uniform'] - Distribución probabilística seleccionada (uniform o exponential).
+     * @returns {Object} Instancia del generador correspondiente.
      */
     const getGenerator = (inputValue, distType = 'uniform') => {
       const parsed = parseTimeInput(String(inputValue));
@@ -134,6 +211,13 @@ export class Simulator {
       }
     };
 
+    /**
+     * Parsea cadenas con valores separados por punto y coma (;) o coma (,) para permitir
+     * configuraciones individuales para cada uno de los servidores en paralelo.
+     * @param {string|Array} val - Cadena de entrada (ej: "30; 45; 60" o "10-20, 20-30").
+     * @param {number} count - Cantidad esperada de servidores.
+     * @returns {Array} Array con las subconfiguraciones individuales para cada servidor.
+     */
     const splitConfigValue = (val, count) => {
       if (Array.isArray(val)) return val;
       if (typeof val !== 'string') return [val];
@@ -149,19 +233,23 @@ export class Simulator {
       return [val];
     };
 
+    // Divide y asigna intervalos de llegada y servicio individuales si fueron definidos por servidor
     const arrIntervals = splitConfigValue(this.config.arrivalInterval, this.numServers);
     const srvIntervals = splitConfigValue(this.config.serviceTime, this.numServers);
 
+    // Generadores específicos de llegada por servidor (utilizado en AISLADOS)
     this.arrivalGenerators = Array.from({ length: this.numServers }, (_, i) => {
       const val = arrIntervals[i] !== undefined ? arrIntervals[i] : arrIntervals[0];
       return getGenerator(val, this.config.arrivalDistType || 'uniform');
     });
 
+    // Generadores específicos de servicio por servidor
     this.serviceGenerators = Array.from({ length: this.numServers }, (_, i) => {
       const val = srvIntervals[i] !== undefined ? srvIntervals[i] : srvIntervals[0];
       return getGenerator(val, this.config.serviceDistType || 'uniform');
     });
 
+    // Generadores generales activos del sistema
     this.generators = {
       arrival: this.arrivalGenerators[0],
       service: this.serviceGenerators[0],
@@ -172,59 +260,74 @@ export class Simulator {
     };
 
     this.initialState = initialState;
-    this.clock = this.config.startTime;
-    this.fel = [];
+    this.clock = this.config.startTime; // El reloj inicia en la hora absoluta elegida (ej. 28800s para 8:00 AM)
+    this.fel = [];                      // Future Event List - Colección de eventos ordenados cronológicamente
     
-    // En topología CHAINED o ISOLATED, podríamos tener múltiples colas.
-    // Para simplificar esta versión inicial, mantendremos colas globales que se usan según topología.
+    // Estructuras de cola globales para la topología de COLA_UNICA
     this.queues = {
-      default: [],
-      vip: []
+      default: [], // Cola para clientes normales (Prioridad A)
+      vip: []      // Cola para clientes VIP (Prioridad B)
     };
 
-    // Inicializar servidores
+    // Inicialización del pool de servidores del sistema
     this.servers = Array.from({ length: this.numServers }, (_, i) => new Server(i + 1, this.generators));
     
-    this.szBusy = false; // Zona de Seguridad
+    this.szBusy = false; // Flag para controlar exclusión mutua en Zona de Seguridad (Problema 5 - Reservado)
 
+    // Acumuladores estadísticos del sistema
     this.stats = {
-      clientsServed: 0,
-      clientsAbandoned: 0,
-      abandonmentsFirstHour: 0,
-      clientsServedUntilSecondBreak: 0,
-      workCycles: 0,
-      restCycles: 0,
-      totalArrivals: 0
+      clientsServed: 0,                   // Total de clientes atendidos que salieron del sistema
+      clientsAbandoned: 0,                // Total de clientes que abandonaron por pérdida de paciencia
+      abandonmentsFirstHour: 0,           // Cantidad de abandonos dentro de los primeros 3600 segundos (métrica académica)
+      clientsServedUntilSecondBreak: 0,   // Clientes atendidos antes de que ocurra el segundo descanso en total
+      workCycles: 0,                      // Total de ciclos de trabajo iniciados
+      restCycles: 0,                      // Total de descansos de servidor completados
+      totalArrivals: 0                    // Total de arribos registrados en el sistema
     };
 
-    this.history = [];
-    this.checkpoints = [];
-    this.checkpointSnapshots = [];
-    this.firstArrivalScheduled = false;
-    this.firstVipArrivalScheduled = false;
+    this.history = [];             // Historial paso a paso del estado para poblar las grillas y diagramas en la UI
+    this.checkpoints = [];         // Reglas dinámicas o condiciones para registrar instantáneas especiales
+    this.checkpointSnapshots = []; // Registro de instantáneas tomadas por los checkpoints
+    
+    this.firstArrivalScheduled = false;    // Control para evitar duplicidad de primera llegada normal
+    this.firstVipArrivalScheduled = false; // Control para evitar duplicidad de primera llegada VIP
 
+    // Inicializa la configuración inicial, colas de inicio y eventos iniciales
     this.#initialize();
   }
 
+  /**
+   * Instancia un objeto cliente con propiedades unívocas de identidad, arribo, paciencia y prioridad.
+   * @param {number} arrivalTime - Tiempo absoluto en segundos de arribo del cliente al sistema.
+   * @param {boolean} [isVip=false] - Indica si el cliente es VIP de forma explícita.
+   * @param {number} [initialWait=0] - Tiempo que lleva esperando (para clientes cargados al inicio).
+   * @returns {Object} Objeto cliente construido.
+   */
   #createClient(arrivalTime, isVip = false, initialWait = 0) {
     const vip = isVip || (this.flags.hasPriority && Math.random() < 0.3);
     const patience = this.generators.patience.next();
     return {
       id: ++clientIdCounter,
-      arrivalTime: arrivalTime - initialWait, // Ajuste para clientes que ya estaban esperando
+      arrivalTime: arrivalTime - initialWait, // Ajuste para preservar el tiempo real de arribo
       patienceTime: patience,
       priority: vip ? ClientPriority.VIP : ClientPriority.NORMAL,
-      currentStage: 0 // Para topología CHAINED
+      currentStage: 0 // Rastreador de la etapa actual (se usa en topología ENCADENADOS)
     };
   }
 
+  /**
+   * Carga el estado inicial en el sistema: puebla colas de inicio,
+   * asigna servidores ocupados desde el segundo cero y agenda las primeras llegadas y descansos.
+   */
   #initialize() {
     resetCounters();
 
     const { clientsInQueue, vipClientsInQueue, initialWaitTime, serverBusy, busyUntil, serversInitialState } = this.initialState;
     const waitTime = parseFloat(initialWaitTime) || 0;
 
-    // Poblar colas iniciales con clientes que ya llevan tiempo esperando
+    /**
+     * Encola un cliente en la cola adecuada según la topología activa y programa su abandono.
+     */
     const pushToQueue = (client, isVip, serverIdx = 0) => {
       if (this.topology === SystemTopology.SINGLE_QUEUE) {
         if (isVip) this.queues.vip.push(client);
@@ -236,21 +339,25 @@ export class Simulator {
       this.#scheduleAbandonment(client);
     };
 
+    // Método A: Estado inicial individualizado por servidor
     if (serversInitialState && Array.isArray(serversInitialState)) {
       serversInitialState.forEach((sInit, idx) => {
         const server = this.servers[idx];
         if (!server) return;
 
+        // Servidor ocupado desde el arranque de la simulación
         if (sInit.busy && sInit.busyUntil !== undefined) {
           server.setState(ServerState.BUSY, this.clock);
           server.clientInService = this.#createClient(this.clock, false, 0);
           server.serviceEndTime = this.clock + parseFloat(sInit.busyUntil);
+          // Agenda el fin del servicio en la FEL
           this.fel.push(createEvent(server.serviceEndTime, EventType.SERVICE_END, {
             serverId: server.id,
             clientId: server.clientInService.id
           }));
         }
 
+        // Carga clientes iniciales en la cola de este servidor específico
         if (sInit.queueLength) {
           for (let i = 0; i < sInit.queueLength; i++) {
             const client = this.#createClient(this.clock, false, waitTime);
@@ -259,6 +366,7 @@ export class Simulator {
         }
       });
     } else {
+      // Método B: Carga uniforme básica (para compatibilidad de presets anteriores)
       for (let i = 0; i < (vipClientsInQueue || 0); i++) {
         const client = this.#createClient(this.clock, true, waitTime);
         pushToQueue(client, true, 0);
@@ -274,14 +382,16 @@ export class Simulator {
         s1.clientInService = this.#createClient(this.clock, false, 0);
         s1.serviceEndTime = this.clock + parseFloat(busyUntil);
         this.fel.push(createEvent(s1.serviceEndTime, EventType.SERVICE_END, {
-          serverId: s1.id,
+          serverId: 1,
           clientId: s1.clientInService.id
         }));
       }
     }
 
+    // Programa las primeras llegadas según la topología
     this.#scheduleFirstArrivals(serverBusy, busyUntil);
     
+    // Inicia el reloj de descansos para todos los servidores y asigna atenciones
     this.servers.forEach(server => {
       this.#scheduleWorkCycle(server);
       if (server.state === ServerState.IDLE) {
@@ -289,12 +399,19 @@ export class Simulator {
       }
     });
 
+    // Registra el paso inicial en el historial de simulación
     this.#recordHistory('INICIO', 'Estado inicial');
   }
 
+  /**
+   * Programa las primeras llegadas del sistema en la FEL.
+   * Si hay presets académicos con desfases específicos, los usa; de lo contrario, genera
+   * los tiempos mediante los generadores de probabilidad correspondientes.
+   */
   #scheduleFirstArrivals(serverBusy, busyUntil) {
     if (this.disableArrivals) return;
 
+    // Si existen tiempos de arribo inicial explícitos (ej. para reproducción exacta de enunciados)
     if (this.initialState.firstArrivalTimes && Array.isArray(this.initialState.firstArrivalTimes)) {
       this.initialState.firstArrivalTimes.forEach((timeOffset, idx) => {
         const absTime = this.clock + parseFloat(timeOffset);
@@ -312,7 +429,9 @@ export class Simulator {
 
     const busyUntilAbs = this.config.startTime + (parseFloat(busyUntil) || 0);
     
+    // Programación inicial según topologías
     if (this.topology === SystemTopology.ISOLATED) {
+      // Un primer arribo para la cola de cada servidor
       for (let i = 0; i < this.numServers; i++) {
         const gen = this.arrivalGenerators[i] || this.arrivalGenerators[0];
         let time = this.clock + gen.next();
@@ -322,6 +441,7 @@ export class Simulator {
         }
       }
     } else {
+      // Cola Única o Encadenados: Primer arribo general (Normal y VIP si aplica)
       if (this.flags.hasPriority && !this.firstVipArrivalScheduled) {
         this.firstVipArrivalScheduled = true;
         let time = this.clock + this.generators.arrival.next();
@@ -342,6 +462,11 @@ export class Simulator {
     }
   }
 
+  /**
+   * Agenda el momento en el que un servidor en servicio activo tomará su próximo descanso.
+   * Se ejecuta al iniciar y cada vez que el servidor retorna de un descanso previo.
+   * @param {Server} server - Instancia del servidor.
+   */
   #scheduleWorkCycle(server) {
     if (!this.flags.hasServerBreaks) return;
     if (server.present && server.nextBreakTime === null) {
@@ -353,6 +478,12 @@ export class Simulator {
     }
   }
 
+  /**
+   * Agenda la llegada del siguiente cliente en la FEL.
+   * Esto asegura que siempre exista un evento de "LLEGADA" programado a futuro en el motor.
+   * @param {boolean} [isVip=false] - Define si la llegada planificada es de prioridad VIP.
+   * @param {number} [serverId=null] - El ID del servidor de destino (para Sistemas Aislados).
+   */
   #scheduleNextArrival(isVip = false, serverId = null) {
     if (this.disableArrivals) return;
     const type = isVip ? EventType.ARRIVAL_VIP : EventType.ARRIVAL;
@@ -365,6 +496,7 @@ export class Simulator {
         this.fel.push(createEvent(time, type, { serverId }));
       }
     } else {
+      // Evita duplicar eventos del mismo tipo en la FEL si ya hay uno programado
       if (!this.fel.some(e => e.type === type)) {
         const time = this.clock + this.generators.arrival.next();
         if (time <= this.config.startTime + this.config.maxTime) {
@@ -374,19 +506,28 @@ export class Simulator {
     }
   }
 
+  /**
+   * Programa en la FEL el evento de abandono de cola de un cliente, 
+   * el cual se ejecutará si el cliente no es atendido antes de agotar su paciencia.
+   * @param {Object} client - El objeto cliente.
+   */
   #scheduleAbandonment(client) {
     if (this.flags.hasClientAbandonment && client.patienceTime < Infinity) {
       const time = client.arrivalTime + client.patienceTime;
-      // Programar abandono
       if (time >= this.clock) {
         this.fel.push(createEvent(time, EventType.ABANDONMENT, { clientId: client.id }));
       } else {
-        // Si ya debería haber abandonado según el vector inicial, lo sacamos en t=0
+        // Si la paciencia ya expiró en el instante actual (ej. inicialización), agenda abandono inmediato
         this.fel.push(createEvent(this.clock, EventType.ABANDONMENT, { clientId: client.id }));
       }
     }
   }
 
+  /**
+   * Busca y retorna el evento inminente (más cercano en tiempo) de la FEL.
+   * Resuelve empates temporales aplicando la prioridad intrínseca de cada tipo de evento.
+   * @returns {Object|null} El evento más cercano, o null si la FEL está vacía.
+   */
   #getNextEvent() {
     if (this.fel.length === 0) return null;
     return this.fel.reduce((min, e) =>
@@ -394,28 +535,36 @@ export class Simulator {
     );
   }
 
+  /**
+   * Maneja el evento de LLEGADA de un cliente normal o VIP.
+   * Enruta al cliente a un servidor disponible o a la cola del sistema de acuerdo a la topología.
+   * @param {Object} event - El evento extraído de la FEL.
+   * @param {boolean} [isVip=false] - Indica si el cliente es VIP.
+   */
   #handleArrival(event, isVip = false) {
     this.stats.totalArrivals++;
     const serverId = event?.data?.serverId || null;
     const client = this.#createClient(this.clock, isVip);
+    
+    // Agenda inmediatamente la siguiente llegada para mantener vivo el bucle
     this.#scheduleNextArrival(isVip, serverId);
 
-    // Lógica según topología
     if (this.topology === SystemTopology.SINGLE_QUEUE) {
-      // Buscar servidor libre
+      // Busca un servidor que esté libre y presente para atenderlo de inmediato
       const freeServer = this.servers.find(s => s.state === ServerState.IDLE && s.present);
       
       if (freeServer && !this.flags.hasSecurityZone) {
         this.#startService(freeServer, client);
         this.#recordHistory(isVip ? EventType.ARRIVAL_VIP : EventType.ARRIVAL, `C${client.id} llega -> S${freeServer.id}`);
       } else {
+        // Si no hay servidores disponibles, el cliente ingresa a la cola correspondiente
         if (isVip) this.queues.vip.push(client);
         else this.queues.default.push(client);
         this.#scheduleAbandonment(client);
         this.#recordHistory(isVip ? EventType.ARRIVAL_VIP : EventType.ARRIVAL, `C${client.id} llega -> cola`);
       }
     } else if (this.topology === SystemTopology.ISOLATED) {
-      // En aislados, el cliente va a un servidor específico
+      // Enrutamiento al servidor especificado en el evento, o a uno aleatorio si no está definido
       const targetId = serverId ? serverId - 1 : Math.floor(Math.random() * this.numServers);
       const server = this.servers[targetId];
       if (server.state === ServerState.IDLE && server.present) {
@@ -426,7 +575,7 @@ export class Simulator {
       }
       this.#recordHistory(EventType.ARRIVAL, `C${client.id} llega a Sistema Aislado ${server.id}`);
     } else if (this.topology === SystemTopology.CHAINED) {
-      // Empieza en etapa 0 (Servidor 1)
+      // Los clientes siempre ingresan obligatoriamente por el Servidor 1 (Etapa 1)
       const s1 = this.servers[0];
       if (s1.state === ServerState.IDLE && s1.present) {
         this.#startService(s1, client);
@@ -438,6 +587,12 @@ export class Simulator {
     }
   }
 
+  /**
+   * Pone al servidor en estado OCUPADO y calcula el fin de su servicio
+   * utilizando el generador correspondiente, agendando la finalización en la FEL.
+   * @param {Server} server - El servidor que atiende.
+   * @param {Object} client - El cliente en atención.
+   */
   #startService(server, client) {
     server.setState(ServerState.BUSY, this.clock);
     server.clientInService = client;
@@ -447,6 +602,12 @@ export class Simulator {
     this.fel.push(createEvent(server.serviceEndTime, EventType.SERVICE_END, { serverId: server.id, clientId: client.id }));
   }
 
+  /**
+   * Maneja el evento de FIN_SERVICIO.
+   * Registra métricas y mueve al cliente a la siguiente etapa (CHAINED) o le da salida.
+   * Posteriormente, hace que el servidor busque atender un nuevo cliente de la cola.
+   * @param {Object} event - Evento extraído de la FEL.
+   */
   #handleServiceEnd(event) {
     const { serverId, clientId } = event.data;
     const server = this.servers.find(s => s.id === serverId);
@@ -459,7 +620,7 @@ export class Simulator {
     let nextAction = '';
 
     if (this.topology === SystemTopology.CHAINED && client.currentStage < this.numServers - 1) {
-      // Pasa al siguiente servidor
+      // El cliente avanza al siguiente servidor secuencial
       client.currentStage++;
       const nextServer = this.servers[client.currentStage];
       nextAction = `C${clientId} termina etapa ${client.currentStage} -> Etapa ${client.currentStage + 1}`;
@@ -467,25 +628,31 @@ export class Simulator {
       if (nextServer.state === ServerState.IDLE && nextServer.present) {
         this.#startService(nextServer, client);
       } else {
-        // En chained real, habría una cola por etapa.
         nextServer.queue.push(client);
       }
     } else {
+      // El cliente sale definitivamente de la red de servidores del sistema
       nextAction = `C${clientId} termina servicio y sale del sistema`;
       if (this.stats.restCycles < 2) {
         this.stats.clientsServedUntilSecondBreak++;
       }
     }
 
-    // El servidor busca nuevo cliente
+    // Libera al servidor y busca el próximo cliente
     this.#selectNextClientForServer(server);
     this.#recordHistory(EventType.SERVICE_END, nextAction);
   }
 
+  /**
+   * Remueve y retorna el próximo cliente en espera para ser atendido por el servidor
+   * respetando el orden de prioridad VIP si corresponde. Si no hay nadie, libera al servidor.
+   * @param {Server} server - El servidor a asignar.
+   */
   #selectNextClientForServer(server) {
     let nextClient = null;
 
     if (this.topology === SystemTopology.SINGLE_QUEUE) {
+      // En cola única, los clientes VIP tienen absoluta prioridad de atención
       nextClient = this.queues.vip.shift() || this.queues.default.shift();
     } else {
       nextClient = server.queue.shift();
@@ -500,6 +667,11 @@ export class Simulator {
     }
   }
 
+  /**
+   * Maneja la salida temporal de un servidor para tomar su descanso programado.
+   * Si el servidor estaba ocupado, suspende/pausa la atención en curso y elimina su fin de servicio de la FEL.
+   * @param {Object} event - Evento extraído de la FEL.
+   */
   #handleServerBreakStart(event) {
     const server = this.servers.find(s => s.id === event.data.serverId);
     if (!server) return;
@@ -513,18 +685,29 @@ export class Simulator {
     server.setState(ServerState.BREAK, this.clock);
     const breakDuration = this.generators.breakDuration.next();
     server.nextWorkTime = this.clock + breakDuration;
+    
+    // Programa en la FEL el retorno del servidor
     this.fel.push(createEvent(server.nextWorkTime, EventType.SERVER_BREAK_END, { serverId: server.id }));
 
     if (oldState === ServerState.BUSY) {
+      // Guarda el tiempo remanente de servicio para reanudarlo posteriormente
       server.pausedServiceRemaining = server.serviceEndTime - this.clock;
       server.pausedClient = server.clientInService;
+      
+      // Remueve el evento de fin de servicio original porque fue interrumpido
       this.fel = this.fel.filter(e => !(e.type === EventType.SERVICE_END && e.data.serverId === server.id));
+      
       this.#recordHistory(EventType.SERVER_BREAK_START, `S${server.id} sale (C${server.pausedClient.id} pausado)`);
     } else {
       this.#recordHistory(EventType.SERVER_BREAK_START, `S${server.id} sale (LIBRE)`);
     }
   }
 
+  /**
+   * Maneja el retorno de un servidor de su descanso programado.
+   * Si tenía un cliente pausado, reanuda su servicio de inmediato; si no, procesa clientes en espera.
+   * @param {Object} event - Evento extraído de la FEL.
+   */
   #handleServerBreakEnd(event) {
     const server = this.servers.find(s => s.id === event.data.serverId);
     if (!server) return;
@@ -533,32 +716,45 @@ export class Simulator {
     server.present = true;
     server.nextWorkTime = null;
 
+    // Programa su siguiente ciclo de trabajo/descanso
     this.#scheduleWorkCycle(server);
 
     if (server.pausedClient) {
+      // Reanuda el servicio pausado del cliente aplicando el tiempo remanente
       server.setState(ServerState.BUSY, this.clock);
       server.clientInService = server.pausedClient;
       server.serviceEndTime = this.clock + server.pausedServiceRemaining;
+      
       server.pausedClient = null;
       server.pausedServiceRemaining = null;
+      
+      // Inserta nuevamente el evento de fin de servicio en la FEL
       this.fel.push(createEvent(server.serviceEndTime, EventType.SERVICE_END, { serverId: server.id, clientId: server.clientInService.id }));
       this.#recordHistory(EventType.SERVER_BREAK_END, `S${server.id} regresa -> C${server.clientInService.id} continúa`);
     } else {
+      // Si estaba libre, intenta tomar un cliente de la cola
       this.#selectNextClientForServer(server);
       this.#recordHistory(EventType.SERVER_BREAK_END, `S${server.id} regresa`);
     }
   }
 
+  /**
+   * Maneja la pérdida de paciencia de un cliente en espera (Abandono de Cola).
+   * Remueve al cliente de la cola si no ha sido atendido en el instante que expira su paciencia.
+   * @param {Object} event - Evento extraído de la FEL.
+   */
   #handleAbandonment(event) {
     const { clientId } = event.data;
     let client = null;
     
+    // Función auxiliar para buscar y sacar al cliente de cualquier estructura de cola
     const findAndRemove = (queue) => {
       const idx = queue.findIndex(c => c.id === clientId);
       if (idx !== -1) return queue.splice(idx, 1)[0];
       return null;
     };
 
+    // Intenta remover de colas globales (VIP/Común) o colas locales de servidores
     client = findAndRemove(this.queues.vip) || findAndRemove(this.queues.default);
     if (!client) {
       for (const server of this.servers) {
@@ -567,6 +763,7 @@ export class Simulator {
       }
     }
 
+    // Si el cliente todavía estaba esperando, concreta el abandono e incrementa métricas
     if (client) {
       this.stats.clientsAbandoned++;
       if (this.clock - this.config.startTime <= 3600) {
@@ -576,16 +773,23 @@ export class Simulator {
     }
   }
 
+  /**
+   * Ejecuta un paso completo de la simulación (Bucle de Eventos Principal).
+   * Recupera el evento más inmediato de la FEL, actualiza el reloj del sistema,
+   * elimina el evento procesado y delega la ejecución al manejador específico.
+   * @returns {boolean} True si la simulación continuó; False si terminó o excedió el límite de tiempo.
+   */
   step() {
     const event = this.#getNextEvent();
     if (!event) return false;
 
     const maxTimeAbs = this.config.startTime + this.config.maxTime;
-    if (event.time > maxTimeAbs) return false;
+    if (event.time > maxTimeAbs) return false; // Detiene la simulación al alcanzar el límite
 
-    this.clock = event.time;
-    this.fel = this.fel.filter(e => e.id !== event.id);
+    this.clock = event.time; // Avance del reloj al instante del evento (Simulación por Eventos Discretos)
+    this.fel = this.fel.filter(e => e.id !== event.id); // Remueve el evento actual de la FEL
 
+    // Despacho del evento
     switch (event.type) {
       case EventType.ARRIVAL: this.#handleArrival(event, false); break;
       case EventType.ARRIVAL_VIP: this.#handleArrival(event, true); break;
@@ -595,11 +799,18 @@ export class Simulator {
       case EventType.ABANDONMENT: this.#handleAbandonment(event); break;
     }
 
+    // Re-evalúa checkpoints en cada paso para ver si se toman fotos
     this.#evaluateCheckpoints();
 
     return true;
   }
 
+  /**
+   * Registra una instantánea detallada del estado de la simulación en este paso temporal.
+   * Es utilizada por el frontend para renderizar paso a paso las animaciones de la grilla de ejecución.
+   * @param {string} eventType - El tipo de evento procesado.
+   * @param {string} action - Una descripción en texto amigable del cambio de estado.
+   */
   #recordHistory(eventType, action) {
     const totalQueueLength = this.topology === SystemTopology.SINGLE_QUEUE 
       ? this.queues.default.length + this.queues.vip.length
@@ -631,10 +842,21 @@ export class Simulator {
     });
   }
 
+  /**
+   * Permite agregar dinámicamente un checkpoint para capturar una instantánea del estado
+   * del sistema cuando se satisfaga una condición específica.
+   * @param {string} name - Nombre descriptivo del checkpoint.
+   * @param {Function} condition - Función evaluadora que recibe la simulación y retorna true/false.
+   * @param {boolean} [isEventBased=false] - Si es true, se evalúa en cada paso; si no, se desactiva tras el primer acierto.
+   */
   addCheckpoint(name, condition, isEventBased = false) {
     this.checkpoints.push({ name, condition, isEventBased, triggered: false });
   }
 
+  /**
+   * Evalúa las condiciones de todos los checkpoints registrados y almacena una instantánea
+   * si la condición resulta verdadera.
+   */
   #evaluateCheckpoints() {
     for (const cp of this.checkpoints) {
       if (cp.isEventBased || !cp.triggered) {
@@ -643,13 +865,15 @@ export class Simulator {
             name: cp.name,
             time: this.clock,
             stats: { ...this.stats },
-            queueLength: this.topology === SystemTopology.SINGLE_QUEUE ? this.queues.default.length + this.queues.vip.length : this.servers.reduce((sum, s) => sum + s.queue.length, 0),
+            queueLength: this.topology === SystemTopology.SINGLE_QUEUE 
+              ? this.queues.default.length + this.queues.vip.length 
+              : this.servers.reduce((sum, s) => sum + s.queue.length, 0),
             serverState: this.servers.length > 1 
               ? this.servers.map(s => s.state === 'OCUPADO' ? '1' : s.state === 'AUSENTE' ? 'A' : '0').join(' | ') 
               : this.servers[0].state
           });
           if (!cp.isEventBased) {
-            cp.triggered = true;
+            cp.triggered = true; // Desactiva para evitar ejecuciones reiteradas de checkpoints puntuales
           }
         }
       }
@@ -657,10 +881,11 @@ export class Simulator {
   }
 
   /**
-   * Ejecuta la simulación hasta el final.
+   * Ejecuta de corrido toda la simulación hasta su finalización o hasta alcanzar un límite superior de seguridad.
+   * @returns {Object} Los resultados y estadísticas acumuladas de toda la ejecución.
    */
   run() {
-    const MAX_STEPS = 100000;
+    const MAX_STEPS = 100000; // Límite de seguridad para evitar bucles infinitos en distribuciones anómalas
     let steps = 0;
     while (this.step()) {
       if (++steps >= MAX_STEPS) {
@@ -671,6 +896,11 @@ export class Simulator {
     return this.getResults();
   }
 
+  /**
+   * Procesa las estadísticas del sistema al término de la simulación.
+   * Calcula la tasa de utilización individualizada de los servidores.
+   * @returns {Object} Historial de pasos y métricas de desempeño consolidadas.
+   */
   getResults() {
     const totalTime = this.clock - this.config.startTime;
     return {
@@ -680,6 +910,7 @@ export class Simulator {
         totalTime,
         serverStats: this.servers.map(s => {
           let bTime = s.busyTime;
+          // Si termina estando ocupado, añade el tiempo remanente de ocupación hasta el reloj final
           if (s.state === ServerState.BUSY) bTime += (this.clock - s.lastStateChange);
           return {
             id: s.id,
@@ -691,6 +922,11 @@ export class Simulator {
     };
   }
 
+  /**
+   * Retorna el estado dinámico detallado del simulador en el instante actual.
+   * Permite actualizar tableros e interfaces de control en tiempo real.
+   * @returns {Object} Estado dinámico resumido.
+   */
   getCurrentState() {
     const totalTime = this.clock - this.config.startTime;
     return {
@@ -711,12 +947,25 @@ export class Simulator {
     };
   }
 
+  /**
+   * Valida si el proceso de simulación ha alcanzado su fin lógico.
+   * - No quedan más eventos programados en la FEL.
+   * - El tiempo de simulación excedió el tiempo máximo configurado.
+   * @returns {boolean} True si terminó; False en caso contrario.
+   */
   isFinished() {
     const next = this.#getNextEvent();
     return !next || next.time > this.config.startTime + this.config.maxTime;
   }
 }
 
+/**
+ * Función utilitaria para dar formato al tiempo absoluto de simulación.
+ * Traduce segundos transcurridos a formato HH:MM:SS en base a una hora de inicio.
+ * @param {number} seconds - Los segundos transcurridos totales.
+ * @param {number} [startTime=0] - Segundos iniciales de la simulación.
+ * @returns {string} Cadena en formato legible HH:MM:SS.
+ */
 export function formatTime(seconds, startTime = 0) {
   const abs = startTime + seconds;
   const h = Math.floor(abs / 3600);
