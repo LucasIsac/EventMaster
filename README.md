@@ -22,7 +22,7 @@ Asegúrate de tener instalado:
 ### 1. Clonar el repositorio
 Abre una terminal y ejecuta el siguiente comando para clonar el repositorio en tu máquina local:
 ```bash
-git clone https://github.com/<tu-usuario>/EventMaster.git
+git clone https://github.com/LucasIsac/EventMaster.git
 cd EventMaster
 ```
 
