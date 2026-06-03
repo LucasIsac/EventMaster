@@ -6,6 +6,7 @@ import { ControlPanel } from './components/ControlPanel';
 import { StatsPanel } from './components/StatsPanel';
 import { AdvancedTable } from './components/AdvancedTable';
 import { CheckpointsModal } from './components/CheckpointsModal';
+import { DiagramsModal } from './components/DiagramsModal';
 import { scaleTimeString } from './utils/timeParser';
 import { BarChart2 } from 'lucide-react';
 import './App.css';
@@ -25,6 +26,7 @@ function App() {
   const [speed, setSpeed] = useState(10);
   const [checkpointRules, setCheckpointRules] = useState(academicPresets.default.checkpointRules);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDiagramsModalOpen, setIsDiagramsModalOpen] = useState(false);
   const intervalRef = useRef(null);
 
   const applyPreset = useCallback((presetId) => {
@@ -458,6 +460,7 @@ function App() {
           isRunning={isRunning} 
           currentState={currentState} 
           openModal={() => setIsModalOpen(true)}
+          openDiagramsModal={() => setIsDiagramsModalOpen(true)}
         />
 
         <StatsPanel 
@@ -503,6 +506,13 @@ function App() {
         checkpoints={currentState?.checkpoints} 
         formatTime={formatTime}
         startTime={config.startTime}
+      />
+
+      <DiagramsModal
+        isOpen={isDiagramsModalOpen}
+        onClose={() => setIsDiagramsModalOpen(false)}
+        config={config}
+        flags={flags}
       />
     </div>
   );
