@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import TimeInput from './TimeInput';
 import TimeField from './TimeField';
 import { CheckpointsConfig } from './CheckpointsConfig';
-import { Settings, Dices } from 'lucide-react';
+import { Settings, Dices, Clock } from 'lucide-react';
 import { academicPresets } from '../presets';
+import { scaleTimeString } from '../utils/timeParser';
 
 // Tooltip "i" button for config groups
 function InfoTooltip({ text }) {
@@ -44,6 +45,26 @@ export function ConfigPanel({
                 <option key={id} value={id}>{preset.label}</option>
               ))}
             </select>
+            <button 
+              className="btn btn-secondary btn-icon btn-sm" 
+              onClick={() => {
+                const currentUnit = config.timeUnit || 'seg';
+                const newUnit = currentUnit === 'seg' ? 'min' : 'seg';
+                const factor = newUnit === 'min' ? (1/60) : 60;
+                
+                updateConfig('timeUnit', newUnit);
+                
+                const keysToScale = ['arrivalInterval', 'serviceTime', 'workTime', 'restTime', 'travelTime', 'maxWaitTime'];
+                keysToScale.forEach(k => {
+                  if (config[k]) {
+                    updateConfig(k, scaleTimeString(config[k], factor));
+                  }
+                });
+              }}
+              title="Cambiar unidad de tiempo de los campos (min/seg)"
+            >
+              <Clock size={14}/> {(config.timeUnit || 'seg') === 'min' ? 'Minutos' : 'Segundos'}
+            </button>
             <button className="btn btn-secondary btn-icon btn-sm" onClick={generateRandomScenario}>
               <Dices size={14}/> Aleatorio
             </button>
@@ -78,7 +99,7 @@ export function ConfigPanel({
               <InfoTooltip text="Intervalo de tiempo entre llegadas consecutivas de clientes. Puede ser un valor fijo, un rango uniforme (ej: 30-60) o exponencial." />
             </div>
             <label>
-              <span>Intervalo de llegada (seg)</span>
+              <span>Intervalo de llegada ({config.timeUnit === 'min' ? 'min' : 'seg'})</span>
               <TimeField 
                 value={config.arrivalInterval} 
                 onChange={(val) => updateConfig('arrivalInterval', val)}
@@ -96,7 +117,7 @@ export function ConfigPanel({
               <InfoTooltip text="Duración de la atención de cada cliente en el servidor. Acepta constante, rango o distribución exponencial." />
             </div>
             <label>
-              <span>Tiempo de servicio (seg)</span>
+              <span>Tiempo de servicio ({config.timeUnit === 'min' ? 'min' : 'seg'})</span>
               <TimeField 
                 value={config.serviceTime} 
                 onChange={(val) => updateConfig('serviceTime', val)}
@@ -163,8 +184,16 @@ export function ConfigPanel({
             </label>
             {initialState.clientsInQueue > 0 && (
               <label>
-                <span>Tiempo ya esperado (seg)</span>
-                <input type="number" value={initialState.initialWaitTime} onChange={(e) => updateInitialState('initialWaitTime', parseInt(e.target.value) || 0)} />
+                <span>Tiempo ya esperado ({config.timeUnit === 'min' ? 'min' : 'seg'})</span>
+                <input 
+                  type="number" 
+                  value={config.timeUnit === 'min' ? (initialState.initialWaitTime / 60) : initialState.initialWaitTime} 
+                  onChange={(e) => {
+                    let val = parseInt(e.target.value) || 0;
+                    if (config.timeUnit === 'min') val *= 60;
+                    updateInitialState('initialWaitTime', val);
+                  }} 
+                />
               </label>
             )}
             <label className="checkbox">
@@ -196,7 +225,7 @@ export function ConfigPanel({
             {flags.hasServerBreaks && (
               <>
                 <label>
-                  <span>ΔT — Tiempo de trabajo (seg)</span>
+                  <span>ΔT — Tiempo de trabajo ({config.timeUnit === 'min' ? 'min' : 'seg'})</span>
                   <TimeField 
                     value={config.workTime} 
                     onChange={(val) => updateConfig('workTime', val)}
@@ -206,7 +235,7 @@ export function ConfigPanel({
                   />
                 </label>
                 <label>
-                  <span>ΔD — Tiempo de descanso (seg)</span>
+                  <span>ΔD — Tiempo de descanso ({config.timeUnit === 'min' ? 'min' : 'seg'})</span>
                   <TimeField 
                     value={config.restTime} 
                     onChange={(val) => updateConfig('restTime', val)}
@@ -232,7 +261,7 @@ export function ConfigPanel({
             </label>
             {flags.hasClientAbandonment && (
               <label>
-                <span>ΔSC — Espera máxima (seg)</span>
+                <span>ΔSC — Espera máxima ({config.timeUnit === 'min' ? 'min' : 'seg'})</span>
                 <TimeField 
                   value={config.maxWaitTime} 
                   onChange={(val) => updateConfig('maxWaitTime', val)}
@@ -254,7 +283,7 @@ export function ConfigPanel({
             </label>
             {flags.hasSecurityZone && (
               <label>
-                <span>ΔtSZ→PS — Tiempo de traslado (seg)</span>
+                <span>ΔtSZ→PS — Tiempo de traslado ({config.timeUnit === 'min' ? 'min' : 'seg'})</span>
                 <TimeField 
                   value={config.travelTime} 
                   onChange={(val) => updateConfig('travelTime', val)}

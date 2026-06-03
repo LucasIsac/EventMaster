@@ -6,6 +6,7 @@ import { ControlPanel } from './components/ControlPanel';
 import { StatsPanel } from './components/StatsPanel';
 import { AdvancedTable } from './components/AdvancedTable';
 import { CheckpointsModal } from './components/CheckpointsModal';
+import { scaleTimeString } from './utils/timeParser';
 import { BarChart2 } from 'lucide-react';
 import './App.css';
 
@@ -45,6 +46,14 @@ function App() {
     setIsRunning(false);
     
     const adjustedConfig = { ...config };
+    if (adjustedConfig.timeUnit === 'min') {
+      const keysToScale = ['arrivalInterval', 'serviceTime', 'workTime', 'restTime', 'travelTime', 'maxWaitTime'];
+      keysToScale.forEach(k => {
+        if (adjustedConfig[k]) {
+          adjustedConfig[k] = scaleTimeString(adjustedConfig[k], 60);
+        }
+      });
+    }
     
     const sim = new Simulator(adjustedConfig, flags, initialState);
 

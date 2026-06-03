@@ -1,4 +1,16 @@
 /**
+ * Escala los números dentro de un string de tiempo por un factor.
+ * Utilizado para convertir entre minutos y segundos.
+ */
+export function scaleTimeString(str, factor) {
+  if (!str || typeof str !== 'string') return str;
+  if (str === '∞') return str;
+  return str.replace(/\d+(?:\.\d+)?/g, (match) => {
+    return String(parseFloat(match) * factor);
+  });
+}
+
+/**
  * Parsea un string de entrada que representa tiempos (constante, lista o rango).
  * @param {string} raw - El string crudo de entrada.
  * @returns {object|null} El objeto parseado con el modo y valores, o un error.

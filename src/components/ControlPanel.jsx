@@ -19,7 +19,7 @@ export function ControlPanel({
           <input
             type="range"
             min="1"
-            max="100"
+            max="10"
             value={speed}
             onChange={(e) => setSpeed(parseInt(e.target.value))}
           />
