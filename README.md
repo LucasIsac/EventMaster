@@ -26,12 +26,9 @@ git clone https://github.com/LucasIsac/EventMaster.git
 cd EventMaster
 ```
 
-### 2. Probar la Aplicación Web (React + Vite)
-Para levantar la interfaz gráfica y probar la simulación visual interactiva:
+### 2. Levantar la Aplicación Web (React + Vite)
+Para instalar dependencias y probar la simulación interactiva en tu navegador:
 ```bash
-# Ingresar al directorio del proyecto web
-cd eventmaster-web
-
 # Instalar las dependencias de la aplicación
 npm install
 
@@ -40,49 +37,44 @@ npm run dev
 ```
 Una vez iniciado, abre tu navegador e ingresa a [http://localhost:5173](http://localhost:5173) para ver el simulador.
 
-### 3. Probar el Motor Core desde Consola (CLI)
-Si deseas ejecutar la versión de consola del simulador:
+### 3. Ejecutar las Pruebas Unitarias (Vitest)
+Para validar la integridad de la lógica de simulación frente a refactorizaciones:
 ```bash
-# Desde la raíz del proyecto (EventMaster/)
-npm install
-npm start
+npm run test
 ```
 
-### 4. Ejecutar las Pruebas Unitarias
-* **Pruebas del Motor Web**:
-  ```bash
-  cd eventmaster-web
-  npm run test
-  ```
-* **Pruebas del Motor Core**:
-  ```bash
-  # Desde la raíz del proyecto
-  npm test
-  ```
+---
 
 ## Estructura del Proyecto
 
 ```
-eventmaster-web/
-├── src/
-│   ├── engine/
-│   │   └── Simulator.js      # Motor de simulación DES
-│   ├── App.jsx                # Componente principal
-│   ├── App.css                # Estilos principales
-│   └── main.jsx               # Punto de entrada
-├── public/
-│   └── favicon.svg            # Icono
-├── index.html                  # HTML base
-├── package.json                # Dependencias
-├── vite.config.js              # Configuración Vite
-└── eslint.config.js           # Configuración ESLint
+EventMaster/
+├── docs/                 # Documentación, ejercicios y casos de estudio
+│   ├── ejercicios/       # Trabajos prácticos y guías del simulador
+│   ├── casos-estudio/    # Problemas avanzados de simulación
+│   └── README.md         # Índice central y teoría de problemas resueltos
+├── src/                  # Código fuente de la aplicación React + Vite
+│   ├── engine/           # Motor de Simulación de Eventos Discretos (DES)
+│   │   └── Simulator.js
+│   ├── components/       # Componentes visuales de la interfaz de usuario
+│   ├── utils/            # Generadores de distribuciones estadísticas
+│   ├── App.jsx           # Componente principal React
+│   └── main.jsx          # Punto de entrada de React
+├── public/               # Recursos públicos (iconos, favicon)
+├── index.html            # Plantilla HTML base
+├── package.json          # Dependencias y scripts del proyecto
+└── vite.config.js        # Configuración de Vite
 ```
 
-## Casos de Prueba
+---
 
-El proyecto cuenta con 4 casos de prueba documentados en `resultados.md`. Cada caso valida diferentes configuraciones del simulador.
+## Casos de Estudio y Documentación
 
-## Simbología Visual
+Para ver la explicación detallada de cada problema que EventMaster puede simular y la lógica de cómo los resuelve el motor paso a paso, consulta el **[Índice de Documentación en docs/README.md](file:///c:/Users/Leo/Documents/Programming/github/repositories/EventMaster/docs/README.md)**.
 
-- **Cuadrado azul:** Servidor (punto de atención)
-- **Círculo naranja:** Cliente en cola (cliente VIP)
+## Simbología Visual de la Interfaz
+
+- **Cuadrado azul:** Servidor o puesto de atención.
+- **Círculo naranja:** Cliente común en cola.
+- **Círculo violeta:** Cliente VIP en cola con prioridad.
+

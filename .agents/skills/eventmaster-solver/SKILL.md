@@ -7,6 +7,13 @@ description: "Analizador de problemas de simulación de eventos discretos (teor�
 
 Esta skill enseña al agente cómo analizar enunciados de problemas de simulación de eventos discretos (generalmente de cátedras universitarias de Modelos y Simulación como la UNLaR) y convertirlos en un preset JSON compatible con el simulador de colas **EventMaster**.
 
+> [!IMPORTANT]
+> **REGLA DE COMPORTAMIENTO CRÍTICA:**
+> Esta skill tiene un propósito meramente analítico, conceptual y de generación de configuración (preset JSON).
+> * **NO ejecutes comandos o scripts en la terminal** (como scripts de python, node, tests o comandos de consola).
+> * **NO navegues por la base de código del proyecto** ni edites archivos fuente del simulador, a menos que el usuario te lo solicite explícitamente.
+> * Concéntrate en resolver teórica/matemáticamente el enunciado y generar el preset en formato JSON.
+
 ## Flujo de Trabajo para el Agente
 
 Cuando un usuario te presente un problema de simulación o teoría de colas para resolver en EventMaster:
