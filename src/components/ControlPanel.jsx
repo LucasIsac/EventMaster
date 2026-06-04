@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { RotateCcw, SkipForward, Pause, Play, Trash2, Download, Camera } from 'lucide-react';
+import { RotateCcw, SkipForward, Pause, Play, Trash2, Download, Camera, Network, FileText } from 'lucide-react';
 
 export function ControlPanel({ 
   getProgress, speed, setSpeed, initialize, step, run, pause, resetAll, 
-  exportResults, hasStarted, isRunning, currentState, openModal 
+  exportResults, hasStarted, isRunning, currentState, openModal, openDiagramsModal, openAcademicReportModal 
 }) {
   const [showHelp, setShowHelp] = useState(false);
 
@@ -56,6 +56,12 @@ export function ControlPanel({
         </button>
         <button className="btn btn-info btn-icon" onClick={openModal} title="Ver Galería de Fotos">
           <Camera size={14}/> Ver Fotos
+        </button>
+        <button className="btn btn-info btn-icon" onClick={openDiagramsModal} title="Ver Lógica Dinámica">
+          <Network size={14}/> Ver Lógica
+        </button>
+        <button className="btn btn-info btn-icon" onClick={openAcademicReportModal} title="Ver Reporte Académico">
+          <FileText size={14}/> Reporte Académico
         </button>
       </div>
 

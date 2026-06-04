@@ -1,4 +1,68 @@
 export const academicPresets = {
+  parcial_aceitunas: {
+    label: "Parcial - Clasificadora de Aceitunas",
+    vocab: { client: "Aceitunas", arrive: "Llega a tolva", served: "Clasificadas", abandon: "Descartes" },
+    config: {
+      maxTime: 28800,
+      startTime: 0,
+      arrivalInterval: '3 - 5',
+      serviceTime: '4 - 6',
+      workTime: '14400 - 21600',
+      restTime: '3600',
+      maxWaitTime: 'Infinity',
+      travelTime: '0',
+      topology: 'COLA_UNICA',
+      numServers: 1
+    },
+    flags: {
+      hasServerBreaks: true,
+      catastrophicBreakdown: true,
+      hasClientAbandonment: false,
+      hasPriority: false,
+      hasSecurityZone: false,
+      disableArrivals: false
+    },
+    initialState: {
+      clientsInQueue: 0,
+      vipClientsInQueue: 0,
+      initialWaitTime: 0,
+      serverBusy: false,
+      busyUntil: 0
+    },
+    checkpointRules: []
+  },
+  aeropuerto: {
+    label: "Aeropuerto (Pista Única)",
+    vocab: { client: "Aviones", arrive: "solicita pista", served: "Usaron pista", abandon: "Desviados" },
+    config: {
+      maxTime: 3600,
+      startTime: 0,
+      arrivalInterval: '120 - 240',
+      serviceTime: '660 - 1260',
+      workTime: '0',
+      restTime: '0',
+      maxWaitTime: 'Infinity',
+      travelTime: '660',
+      topology: 'COLA_UNICA',
+      numServers: 1
+    },
+    flags: {
+      hasServerBreaks: false,
+      hasClientAbandonment: false,
+      hasPriority: true,
+      hasSecurityZone: true,
+      vipSkipsSecurityZone: true,
+      disableArrivals: false
+    },
+    initialState: {
+      clientsInQueue: 0,
+      vipClientsInQueue: 0,
+      initialWaitTime: 0,
+      serverBusy: false,
+      busyUntil: 0
+    },
+    checkpointRules: []
+  },
   default: {
     label: "Simulación Básica",
     vocab: { client: "Clientes", arrive: "llega", served: "Atendidos", abandon: "Abandonos" },
