@@ -244,6 +244,14 @@ export function ConfigPanel({
                     placeholder="60"
                   />
                 </label>
+                <label className="checkbox" style={{ marginTop: '10px' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={flags.catastrophicBreakdown || false} 
+                    onChange={(e) => updateFlags('catastrophicBreakdown', e.target.checked)} 
+                  />
+                  <span>Rotura Catastrófica (Vacía la cola)</span>
+                </label>
               </>
             )}
           </div>
@@ -282,16 +290,22 @@ export function ConfigPanel({
               <span>Zona de Seguridad</span>
             </label>
             {flags.hasSecurityZone && (
-              <label>
-                <span>ΔtSZ→PS — Tiempo de traslado ({config.timeUnit === 'min' ? 'min' : 'seg'})</span>
-                <TimeField 
-                  value={config.travelTime} 
-                  onChange={(val) => updateConfig('travelTime', val)}
-                  distType={config.travelDistType || 'uniform'}
-                  onDistTypeChange={(val) => updateConfig('travelDistType', val)}
-                  placeholder="10"
-                />
-              </label>
+              <>
+                <label className="checkbox" style={{ paddingLeft: '10px' }}>
+                  <input type="checkbox" checked={flags.vipSkipsSecurityZone || false} onChange={(e) => updateFlags('vipSkipsSecurityZone', e.target.checked)} />
+                  <span>Los VIP ignoran la Zona de Seguridad</span>
+                </label>
+                <label>
+                  <span>ΔtSZ→PS — Tiempo de traslado ({config.timeUnit === 'min' ? 'min' : 'seg'})</span>
+                  <TimeField 
+                    value={config.travelTime} 
+                    onChange={(val) => updateConfig('travelTime', val)}
+                    distType={config.travelDistType || 'uniform'}
+                    onDistTypeChange={(val) => updateConfig('travelDistType', val)}
+                    placeholder="10"
+                  />
+                </label>
+              </>
             )}
           </div>
 

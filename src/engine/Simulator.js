@@ -587,8 +587,13 @@ export class Simulator {
       
       if (freeServer && (!this.flags.hasSecurityZone || !this.szBusy)) {
         if (this.flags.hasSecurityZone) {
-          this.#sendClientThroughSecurityZone(freeServer, client);
-          this.#recordHistory(historyEventType, `C${client.id} llega -> zona de seguridad`);
+          if (clientIsVip && this.flags.vipSkipsSecurityZone) {
+            this.#startService(freeServer, client);
+            this.#recordHistory(historyEventType, `C${client.id} VIP ignora SZ -> S${freeServer.id}`);
+          } else {
+            this.#sendClientThroughSecurityZone(freeServer, client);
+            this.#recordHistory(historyEventType, `C${client.id} llega -> zona de seguridad`);
+          }
         } else {
           this.#startService(freeServer, client);
           this.#recordHistory(historyEventType, `C${client.id} llega -> S${freeServer.id}`);
@@ -813,7 +818,11 @@ export class Simulator {
         server.clientInService = null;
         server.serviceEndTime = null;
       } else {
-        this.#sendClientThroughSecurityZone(server, nextClient);
+        if (nextClient.priority === ClientPriority.VIP && this.flags.vipSkipsSecurityZone) {
+          this.#startService(server, nextClient);
+        } else {
+          this.#sendClientThroughSecurityZone(server, nextClient);
+        }
       }
     } else if (nextClient) {
       this.#startService(server, nextClient);
@@ -849,17 +858,36 @@ export class Simulator {
     // Programa en la FEL el retorno del servidor
     this.fel.push(createEvent(server.nextWorkTime, EventType.SERVER_BREAK_END, { serverId: server.id }));
 
-    if (oldState === ServerState.BUSY) {
-      // Guarda el tiempo remanente de servicio para reanudarlo posteriormente
-      server.pausedServiceRemaining = server.serviceEndTime - this.clock;
-      server.pausedClient = server.clientInService;
+    if (this.flags.catastrophicBreakdown) {
+      let totalDescartados = (this.queues.default?.length || 0) + (this.queues.vip?.length || 0) + (server.queue?.length || 0);
+      if (oldState === ServerState.BUSY) totalDescartados += 1;
+
+      this.stats.clientsAbandoned += totalDescartados;
       
-      // Remueve el evento de fin de servicio original porque fue interrumpido
+      this.queues.default = [];
+      this.queues.vip = [];
+      server.queue = [];
+      if (this.queue) this.queue = [];
+
+      server.clientInService = null;
+      server.serviceEndTime = null;
+      
       this.fel = this.fel.filter(e => !(e.type === EventType.SERVICE_END && e.data.serverId === server.id));
-      
-      this.#recordHistory(EventType.SERVER_BREAK_START, `S${server.id} sale (C${server.pausedClient.id} pausado)`);
+
+      this.#recordHistory(EventType.SERVER_BREAK_START, `S${server.id} se rompe -> ${totalDescartados} descartes`);
     } else {
-      this.#recordHistory(EventType.SERVER_BREAK_START, `S${server.id} sale (LIBRE)`);
+      if (oldState === ServerState.BUSY) {
+        // Guarda el tiempo remanente de servicio para reanudarlo posteriormente
+        server.pausedServiceRemaining = server.serviceEndTime - this.clock;
+        server.pausedClient = server.clientInService;
+        
+        // Remueve el evento de fin de servicio original porque fue interrumpido
+        this.fel = this.fel.filter(e => !(e.type === EventType.SERVICE_END && e.data.serverId === server.id));
+        
+        this.#recordHistory(EventType.SERVER_BREAK_START, `S${server.id} sale (C${server.pausedClient.id} pausado)`);
+      } else {
+        this.#recordHistory(EventType.SERVER_BREAK_START, `S${server.id} sale (LIBRE)`);
+      }
     }
   }
 
@@ -1022,6 +1050,8 @@ export class Simulator {
       commonQueueLength: this.queues.default.length,
       queueClients: allClients.map(c => ({ ...c })),
       fel: this.fel.map(e => ({ ...e })),
+      szBusy: this.szBusy,
+      securityZoneClient: this.securityZoneClient ? { ...this.securityZoneClient } : null,
       action
     });
   }
