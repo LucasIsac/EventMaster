@@ -1,0 +1,199 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EventMasterPreset",
+  "type": "object",
+  "required": ["config", "flags", "initialState", "checkpointRules", "vocab"],
+  "properties": {
+    "label": {
+      "type": "string",
+      "description": "Nombre identificatorio del preset"
+    },
+    "config": {
+      "type": "object",
+      "required": ["maxTime", "startTime", "arrivalInterval", "serviceTime", "workTime", "restTime", "maxWaitTime", "travelTime", "topology", "numServers"],
+      "properties": {
+        "maxTime": {
+          "type": "number",
+          "description": "Tiempo máximo de simulación en segundos (ej. 28800 para 8 horas)"
+        },
+        "startTime": {
+          "type": "number",
+          "description": "Tiempo de inicio en segundos desde la medianoche (ej. 28800 para las 08:00 AM)"
+        },
+        "arrivalInterval": {
+          "type": "string",
+          "description": "Intervalo entre arribos. Formatos: 'constante' (ej. '60'), 'rango' (ej. '30 - 90'), 'valores discretos' (ej. '10, 20, 30')"
+        },
+        "serviceTime": {
+          "type": "string",
+          "description": "Tiempo de atención del servidor. Mismo formato que arrivalInterval (ej. '120' o '60 - 180')"
+        },
+        "workTime": {
+          "type": "string",
+          "description": "Tiempo de trabajo antes de un descanso (ej. '7200' o 'Infinity' si no hay descansos)"
+        },
+        "restTime": {
+          "type": "string",
+          "description": "Duración de los descansos (ej. '900' o '0' si no hay)"
+        },
+        "maxWaitTime": {
+          "type": "string",
+          "description": "Tiempo máximo que un cliente espera en la cola antes de abandonar (ej. '600' o 'Infinity' si no abandonan)"
+        },
+        "travelTime": {
+          "type": "string",
+          "description": "Tiempo de traslado del servidor hasta la pista/cliente (ej. '660' u '0' si es instantáneo)"
+        },
+        "topology": {
+          "type": "string",
+          "enum": ["COLA_UNICA", "AISLADOS", "ENCADENADOS"],
+          "description": "Topología de la cola con múltiples servidores"
+        },
+        "numServers": {
+          "type": "number",
+          "minimum": 1,
+          "description": "Número de servidores en el sistema"
+        },
+        "singleWorkerStrategy": {
+          "type": "string",
+          "enum": ["silla_por_silla", "por_lotes"],
+          "description": "Estrategia para topología ENCADENADOS cuando hay un solo trabajador (opcional)"
+        },
+        "timeUnit": {
+          "type": "string",
+          "enum": ["seg", "min"],
+          "description": "Unidad de tiempo mostrada (segundos o minutos) (opcional)"
+        }
+      }
+    },
+    "flags": {
+      "type": "object",
+      "required": ["hasServerBreaks", "hasClientAbandonment", "hasPriority", "hasSecurityZone", "disableArrivals"],
+      "properties": {
+        "hasServerBreaks": {
+          "type": "boolean",
+          "description": "Habilitar descansos del servidor (si workTime != Infinity)"
+        },
+        "hasClientAbandonment": {
+          "type": "boolean",
+          "description": "Habilitar abandono de clientes por tiempo de espera excedido"
+        },
+        "hasPriority": {
+          "type": "boolean",
+          "description": "Habilitar clientes VIP/prioritarios (cola con prioridad)"
+        },
+        "hasSecurityZone": {
+          "type": "boolean",
+          "description": "Habilitar zona de seguridad (tiempo de viaje/traslado para iniciar atención)"
+        },
+        "disableArrivals": {
+          "type": "boolean",
+          "description": "Deshabilitar nuevos arribos al sistema (los clientes ya están en cola inicialmente)"
+        },
+        "singleWorkerChained": {
+          "type": "boolean",
+          "description": "Habilitar un único trabajador para servidores encadenados (opcional)"
+        }
+      }
+    },
+    "initialState": {
+      "type": "object",
+      "required": ["clientsInQueue", "vipClientsInQueue", "initialWaitTime", "serverBusy", "busyUntil"],
+      "properties": {
+        "clientsInQueue": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Clientes comunes inicialmente en la cola"
+        },
+        "vipClientsInQueue": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Clientes VIP/prioritarios inicialmente en la cola"
+        },
+        "initialWaitTime": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Tiempo de espera inicial en cola en segundos (normalmente 0)"
+        },
+        "serverBusy": {
+          "type": "boolean",
+          "description": "Si el servidor (o el primer servidor) inicia ocupado"
+        },
+        "busyUntil": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Tiempo en segundos hasta el cual el servidor estará ocupado al iniciar (0 si serverBusy es false)"
+        },
+        "serversInitialState": {
+          "type": "array",
+          "description": "Estado inicial para múltiples servidores individuales (opcional)",
+          "items": {
+            "type": "object",
+            "required": ["busy", "busyUntil", "queueLength"],
+            "properties": {
+              "busy": { "type": "boolean" },
+              "busyUntil": { "type": "number" },
+              "queueLength": { "type": "number" }
+            }
+          }
+        },
+        "firstArrivalTimes": {
+          "type": "array",
+          "description": "Tiempos predefinidos de los primeros arribos en segundos (opcional)",
+          "items": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "checkpointRules": {
+      "type": "array",
+      "description": "Reglas de parada/puntos de control personalizados (ej. parada por cantidad de atendidos, o por tiempo)",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "value", "label"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Identificador único de la regla (ej. 'checkpoint_1')"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["absolute", "interval", "break", "abandon", "break_n", "break_end_n", "served_n", "abandon_n"],
+            "description": "Tipo de regla: absolute (tiempo absoluto), served_n (atendidos N), abandon_n (abandonados N), etc."
+          },
+          "value": {
+            "type": "number",
+            "description": "Valor numérico límite para la regla"
+          },
+          "label": {
+            "type": "string",
+            "description": "Descripción humana de la regla (ej. 'Detener al atender 10 clientes')"
+          }
+        }
+      }
+    },
+    "vocab": {
+      "type": "object",
+      "required": ["client", "arrive", "served", "abandon"],
+      "properties": {
+        "client": {
+          "type": "string",
+          "description": "Nombre singular del cliente en la UI (ej. 'Avión', 'Paciente', 'Auto')"
+        },
+        "arrive": {
+          "type": "string",
+          "description": "Verbo o sustantivo de llegada en la UI (ej. 'Arriba', 'Llega')"
+        },
+        "served": {
+          "type": "string",
+          "description": "Verbo de atención en la UI (ej. 'Atendido', 'Despega')"
+        },
+        "abandon": {
+          "type": "string",
+          "description": "Verbo de abandono en la UI (ej. 'Abandona', 'Se va')"
+        }
+      }
+    }
+  }
+}
