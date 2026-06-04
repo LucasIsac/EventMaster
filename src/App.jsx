@@ -38,6 +38,16 @@ function App() {
     setVocab(preset.vocab);
   }, []);
 
+  const importPreset = useCallback((presetData) => {
+    if (!presetData) return;
+    setActivePreset('imported');
+    if (presetData.config) setConfig(presetData.config);
+    if (presetData.flags) setFlags(presetData.flags);
+    if (presetData.initialState) setInitialState(presetData.initialState);
+    if (presetData.checkpointRules) setCheckpointRules(presetData.checkpointRules);
+    if (presetData.vocab) setVocab(presetData.vocab);
+  }, []);
+
   /**
    * Inicializa una nueva instancia del simulador con la configuración actual.
    */
@@ -442,6 +452,7 @@ function App() {
           generateRandomScenario={generateRandomScenario}
           activePreset={activePreset}
           applyPreset={applyPreset}
+          onImportPreset={importPreset}
         />
 
         <ControlPanel 
