@@ -32,7 +32,10 @@ Cuando un usuario te presente un problema de simulación o teoría de colas para
 
 3.  **Generar el JSON del Preset:**
     *   Construye el objeto JSON con todos sus campos (`config`, `flags`, `initialState`, `checkpointRules`, `vocab`).
-    *   Asegúrate de convertir todas las unidades de tiempo a **segundos** internamente en el JSON (o especifica `"timeUnit": "min"` en el config si es preferible que la UI muestre minutos).
+    *   **Manejo de Unidades de Tiempo (IMPORTANTE):**
+        *   **Usa minutos por defecto (`"timeUnit": "min"`)** a menos que el problema original esté explícitamente redactado en segundos.
+        *   Si `"timeUnit": "min"`, **los valores textuales de los intervalos (`arrivalInterval`, `serviceTime`, `workTime`, `restTime`, `travelTime`, `maxWaitTime`) se deben escribir en minutos** (ej. `"11 - 21"` o `"11"`). La interfaz web de EventMaster los multiplicará automáticamente por 60 para inicializar el motor. **No realices la conversión manual a segundos** para estos campos, de lo contrario ocurrirá una doble multiplicación.
+        *   El parámetro numérico **`maxTime`** (y campos del `initialState` como `initialWaitTime` o `busyUntil`) **siempre deben especificarse en segundos**, sin importar el valor de `timeUnit` (ej. 1 hora = `3600`, 8 horas = `28800`).
     *   Presenta al usuario la explicación razonada del mapeo de variables.
     *   Proporciona el JSON final dentro de un bloque de código markdown de tipo `json` para que el usuario pueda copiarlo con un solo clic.
 
