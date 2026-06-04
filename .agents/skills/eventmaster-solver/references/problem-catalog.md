@@ -229,3 +229,85 @@ Arreglo de números que determina los momentos exactos (en segundos desde el ini
   }
 }
 ```
+
+---
+
+## 12. Clasificadora de Aceitunas / Averías Catastróficas
+Cuando un servidor sufre una rotura catastrófica en lugar de un descanso convencional, la cola de espera y el proceso actual se vacían de inmediato. Además, durante el tiempo que dura la reparación, cualquier nuevo arribo es descartado automáticamente.
+
+*   `flags.catastrophicBreakdown`: `true`
+*   `flags.hasServerBreaks`: `true` (las roturas ocurren en los tiempos definidos por `workTime` y `restTime`).
+
+### Ejemplo de Configuración:
+```json
+{
+  "config": {
+    "maxTime": 28800,
+    "startTime": 0,
+    "arrivalInterval": "3 - 5",
+    "serviceTime": "4 - 6",
+    "workTime": "14400 - 21600",
+    "restTime": "3600",
+    "maxWaitTime": "Infinity",
+    "travelTime": "0",
+    "topology": "COLA_UNICA",
+    "numServers": 1,
+    "timeUnit": "min"
+  },
+  "flags": {
+    "hasServerBreaks": true,
+    "catastrophicBreakdown": true,
+    "hasClientAbandonment": false,
+    "hasPriority": false,
+    "hasSecurityZone": false,
+    "disableArrivals": false
+  },
+  "vocab": {
+    "client": "Aceituna",
+    "arrive": "Llega a tolva",
+    "served": "Clasificada",
+    "abandon": "Descarte"
+  }
+}
+```
+
+---
+
+## 13. Aeropuerto con Pista Única y Prioridad de Aterrizaje
+En problemas de control de tráfico aéreo, los aviones que aterrizan tienen prioridad (VIP) y no requieren tiempo de recorrido previo, mientras que los despegues (Normales) requieren un tiempo de carreteo previo constante (`travelTime`) que bloquea la pista de forma preventiva.
+
+*   `flags.hasPriority`: `true` (los aterrizajes son VIP, los despegues son normales).
+*   `flags.hasSecurityZone`: `true` (activa el tiempo de carreteo/recorrido previo para los despegues).
+*   `flags.vipSkipsSecurityZone`: `true` (los aviones que aterrizan omiten el recorrido previo y entran directo a pista).
+
+### Ejemplo de Configuración:
+```json
+{
+  "config": {
+    "maxTime": 3600,
+    "startTime": 0,
+    "arrivalInterval": "120 - 240",
+    "serviceTime": "660 - 1260",
+    "workTime": "0",
+    "restTime": "0",
+    "maxWaitTime": "Infinity",
+    "travelTime": "660",
+    "topology": "COLA_UNICA",
+    "numServers": 1
+  },
+  "flags": {
+    "hasServerBreaks": false,
+    "hasClientAbandonment": false,
+    "hasPriority": true,
+    "hasSecurityZone": true,
+    "vipSkipsSecurityZone": true,
+    "disableArrivals": false
+  },
+  "vocab": {
+    "client": "Avión",
+    "arrive": "solicita pista",
+    "served": "Usó la pista",
+    "abandon": "Desviado"
+  }
+}
+```

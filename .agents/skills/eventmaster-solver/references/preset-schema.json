@@ -93,6 +93,14 @@
         "singleWorkerChained": {
           "type": "boolean",
           "description": "Habilitar un único trabajador para servidores encadenados (opcional)"
+        },
+        "catastrophicBreakdown": {
+          "type": "boolean",
+          "description": "Habilitar avería/rotura catastrófica. En el descanso, descarta la cola y el proceso actual, y los arribos durante la reparación también se descartan (opcional)"
+        },
+        "vipSkipsSecurityZone": {
+          "type": "boolean",
+          "description": "Habilitar que los clientes VIP omitan la zona de seguridad/tiempo de viaje (opcional)"
         }
       }
     },

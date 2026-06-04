@@ -18,9 +18,11 @@ Cuando un usuario te presente un problema de simulación o teoría de colas para
     *   **Topología:** Determina si es un solo servidor o múltiples servidores. Si son múltiples, identifica si tienen colas independientes (`AISLADOS`), una fila única (`COLA_UNICA`), o si están en serie (`ENCADENADOS`).
     *   **Restricciones Especiales (Flags):**
         *   ¿Hay descansos? Identifica el tiempo de trabajo (`workTime`) y de descanso (`restTime`).
+        *   ¿Hay roturas o paros imprevistos? Si al detenerse el servidor se descarta la cola y el proceso actual, y se descartan las nuevas llegadas durante la reparación, activa `catastrophicBreakdown`.
         *   ¿Hay abandono por impaciencia? Identifica el tiempo máximo de espera (`maxWaitTime`).
         *   ¿Hay prioridades? Si hay clientes VIP y comunes que comparten cola (ej. aterrizajes vs despegues, emergencias vs consultas), activa `hasPriority`.
         *   ¿Hay tiempo de viaje/traslado? Si el servidor demora en desplazarse hacia el cliente o despejar la pista, activa `hasSecurityZone` e identifica el `travelTime`.
+        *   ¿Los clientes VIP/prioritarios evitan el tiempo de traslado? Si es así, activa `vipSkipsSecurityZone`.
     *   **Condiciones Iniciales:** Determina si el sistema empieza vacío o si hay clientes en cola (`clientsInQueue`) o si el servidor empieza ocupado (`serverBusy` y `busyUntil`).
     *   **Reglas de Parada (Checkpoints):** Determina cuándo se detiene la simulación (ej. después de 10 clientes servidos, al primer descanso, o a las 2 horas).
 
