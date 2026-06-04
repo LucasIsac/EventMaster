@@ -600,10 +600,16 @@ export class Simulator {
         }
       } else {
         // Si no hay servidores disponibles, el cliente ingresa a la cola correspondiente
-        if (clientIsVip) this.queues.vip.push(client);
-        else this.queues.default.push(client);
-        this.#scheduleAbandonment(client);
-        this.#recordHistory(historyEventType, `C${client.id} llega -> cola`);
+        // Si el sistema tiene avería catastrófica y el servidor está caído, se descarta directamente
+        if (this.flags.catastrophicBreakdown && this.servers.every(s => !s.present)) {
+          this.stats.clientsAbandoned++;
+          this.#recordHistory(historyEventType, `C${client.id} llega -> descarte por avería`);
+        } else {
+          if (clientIsVip) this.queues.vip.push(client);
+          else this.queues.default.push(client);
+          this.#scheduleAbandonment(client);
+          this.#recordHistory(historyEventType, `C${client.id} llega -> cola`);
+        }
       }
     } else if (this.topology === SystemTopology.ISOLATED) {
       // Enrutamiento al servidor especificado en el evento, o a uno aleatorio si no está definido
@@ -612,23 +618,38 @@ export class Simulator {
       if (server.state === ServerState.IDLE && server.present) {
         this.#startService(server, client);
       } else {
-        server.queue.push(client);
-        this.#scheduleAbandonment(client);
+        if (this.flags.catastrophicBreakdown && !server.present) {
+          this.stats.clientsAbandoned++;
+          this.#recordHistory(historyEventType, `C${client.id} llega a Sistema Aislado ${server.id} -> descarte por avería`);
+        } else {
+          server.queue.push(client);
+          this.#scheduleAbandonment(client);
+        }
       }
       this.#recordHistory(historyEventType, `C${client.id} llega a Sistema Aislado ${server.id}`);
     } else if (this.topology === SystemTopology.CHAINED) {
       // Los clientes siempre ingresan obligatoriamente por el Servidor 1 (Etapa 1)
       const s1 = this.servers[0];
       if (this.flags.singleWorkerChained) {
-        s1.queue.push(client);
-        this.#scheduleAbandonment(client);
-        this.#checkAndStartSingleWorkerChained();
+        if (this.flags.catastrophicBreakdown && !s1.present) {
+          this.stats.clientsAbandoned++;
+          this.#recordHistory(historyEventType, `C${client.id} llega -> Etapa 1 (S1) -> descarte por avería`);
+        } else {
+          s1.queue.push(client);
+          this.#scheduleAbandonment(client);
+          this.#checkAndStartSingleWorkerChained();
+        }
       } else {
         if (s1.state === ServerState.IDLE && s1.present) {
           this.#startService(s1, client);
         } else {
-          s1.queue.push(client);
-          this.#scheduleAbandonment(client);
+          if (this.flags.catastrophicBreakdown && !s1.present) {
+            this.stats.clientsAbandoned++;
+            this.#recordHistory(historyEventType, `C${client.id} llega -> Etapa 1 (S1) -> descarte por avería`);
+          } else {
+            s1.queue.push(client);
+            this.#scheduleAbandonment(client);
+          }
         }
       }
       this.#recordHistory(historyEventType, `C${client.id} llega -> Etapa 1 (S1)`);
