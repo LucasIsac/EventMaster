@@ -284,6 +284,41 @@ export function ConfigPanel({
               <span className="slider"></span>
               <span>Clientes VIP</span>
             </label>
+            {flags.hasPriority && (
+              <label style={{ paddingLeft: '10px' }}>
+                <span>Tiempo de Servicio VIP ({config.timeUnit === 'min' ? 'min' : 'seg'})</span>
+                <TimeField 
+                  value={config.vipServiceTime} 
+                  onChange={(val) => updateConfig('vipServiceTime', val)}
+                  distType={config.vipServiceDistType || 'uniform'}
+                  onDistTypeChange={(val) => updateConfig('vipServiceDistType', val)}
+                  placeholder="Ej: 600"
+                />
+              </label>
+            )}
+            <label className="switch">
+              <input type="checkbox" checked={flags.hasTandemRamps} onChange={(e) => updateFlags('hasTandemRamps', e.target.checked)} />
+              <span className="slider"></span>
+              <span>Topología Tándem</span>
+            </label>
+            {flags.hasTandemRamps && (
+              <div style={{ paddingLeft: '10px', marginTop: '10px', marginBottom: '10px', borderLeft: '2px solid #4a5568' }}>
+                <label style={{ paddingLeft: '10px' }}>
+                  <span>Cantidad de Rampas</span>
+                  <input type="number" min="1" max="10" value={config.numRamps || 3} onChange={(e) => updateConfig('numRamps', parseInt(e.target.value) || 1)} />
+                </label>
+                <label style={{ paddingLeft: '10px' }}>
+                  <span>Tiempo de Abordaje ({config.timeUnit === 'min' ? 'min' : 'seg'})</span>
+                  <TimeField 
+                    value={config.rampBoardingTime} 
+                    onChange={(val) => updateConfig('rampBoardingTime', val)}
+                    distType={config.rampBoardingDistType || 'uniform'}
+                    onDistTypeChange={(val) => updateConfig('rampBoardingDistType', val)}
+                    placeholder="2400 - 4800"
+                  />
+                </label>
+              </div>
+            )}
             <label className="switch">
               <input type="checkbox" checked={flags.hasSecurityZone} onChange={(e) => updateFlags('hasSecurityZone', e.target.checked)} />
               <span className="slider"></span>

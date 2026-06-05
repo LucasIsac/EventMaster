@@ -529,5 +529,40 @@ export const academicPresets = {
       firstArrivalTimes: [20]
     },
     checkpointRules: []
+  },
+  parcial_2018_tandem: {
+    label: "Aeropuerto Tándem (3 Rampas)",
+    vocab: { client: "Avión", arrive: "Llega de Rampa/Cielo", served: "Despegó/Aterrizó", abandon: "Desviados" },
+    config: {
+      maxTime: 14400,
+      startTime: 0,
+      arrivalInterval: '3600',
+      serviceTime: '1200 - 2400',
+      vipServiceTime: '600',
+      rampBoardingTime: '2400 - 4800',
+      numRamps: 3,
+      workTime: '0',
+      restTime: '0',
+      maxWaitTime: 'Infinity',
+      travelTime: '0',
+      topology: 'COLA_UNICA',
+      numServers: 1
+    },
+    flags: {
+      hasTandemRamps: true,
+      hasPriority: true,
+      hasServerBreaks: false,
+      hasClientAbandonment: false,
+      hasSecurityZone: false,
+      disableArrivals: false
+    },
+    initialState: {
+      clientsInQueue: 0,
+      vipClientsInQueue: 0,
+      initialWaitTime: 0,
+      serverBusy: false,
+      busyUntil: 0
+    },
+    checkpointRules: []
   }
 };

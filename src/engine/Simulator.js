@@ -52,7 +52,8 @@ export const EventType = {
   SERVER_BREAK_END: 'LLEGADA_SERVIDOR',     // Fin del descanso de un servidor y su retorno
   ABANDONMENT: 'ABANDONO',                  // Salida prematura de la cola por vencimiento de paciencia
   ENTER_SZ: 'ENTER_SZ',                     // Entrada a la Zona de Seguridad (Problema 5 - Reservado)
-  ARRIVAL_PS: 'LLEGADA_PS'                  // Llegada al Punto de Servicio (Problema 5 - Reservado)
+  ARRIVAL_PS: 'LLEGADA_PS',                 // Llegada al Punto de Servicio (Problema 5 - Reservado)
+  RAMP_BOARDING_COMPLETE: 'FIN_ABORDAJE_RAMPA' // Fin de abordaje de una rampa (Topología Tándem)
 };
 
 // Contadores globales auto-incrementales para identificar clientes y eventos de forma unívoca.
@@ -84,6 +85,7 @@ function createEvent(time, type, data = {}) {
     [EventType.ARRIVAL_PS]: 2,
     [EventType.ARRIVAL_VIP]: 3,
     [EventType.ARRIVAL]: 4,
+    [EventType.RAMP_BOARDING_COMPLETE]: 4,
     [EventType.ENTER_SZ]: 4,
     [EventType.SERVER_BREAK_START]: 5,
     [EventType.ABANDONMENT]: 5
@@ -261,6 +263,13 @@ export class Simulator {
       patience: getGenerator(this.config.maxWaitTime, this.config.patienceDistType || 'uniform'),
     };
 
+    if (this.flags.hasTandemRamps) {
+      this.generators.rampBoarding = getGenerator(this.config.rampBoardingTime, this.config.rampBoardingDistType || 'uniform');
+    }
+    if (this.config.vipServiceTime) {
+      this.generators.vipService = getGenerator(this.config.vipServiceTime, this.config.vipServiceDistType || 'uniform');
+    }
+
     this.initialState = initialState;
     this.clock = this.config.startTime; // El reloj inicia en la hora absoluta elegida (ej. 28800s para 8:00 AM)
     this.fel = [];                      // Future Event List - Colección de eventos ordenados cronológicamente
@@ -403,6 +412,17 @@ export class Simulator {
     // Programa las primeras llegadas según la topología
     this.#scheduleFirstArrivals();
 
+    // Topología Tándem: Iniciar abordaje de rampas
+    if (this.flags.hasTandemRamps) {
+      const numRamps = this.config.numRamps || 3;
+      for (let i = 1; i <= numRamps; i++) {
+        const time = this.clock + this.generators.rampBoarding.next();
+        if (time <= this.config.startTime + this.config.maxTime) {
+          this.fel.push(createEvent(time, EventType.RAMP_BOARDING_COMPLETE, { rampId: i }));
+        }
+      }
+    }
+
     this.#processExpiredQueuedClients();
     
     // Inicia el reloj de descansos para todos los servidores y asigna atenciones
@@ -464,7 +484,13 @@ export class Simulator {
         this.firstArrivalScheduled = true;
         const time = this.clock + this.generators.arrival.next();
         if (time <= this.config.startTime + this.config.maxTime) {
-          this.fel.push(createEvent(time, EventType.ARRIVAL, {}));
+          if (this.flags.hasTandemRamps) {
+            if (this.flags.hasPriority) {
+              this.fel.push(createEvent(time, EventType.ARRIVAL_VIP, {}));
+            }
+          } else {
+            this.fel.push(createEvent(time, EventType.ARRIVAL, {}));
+          }
         }
       }
     }
@@ -494,7 +520,13 @@ export class Simulator {
    */
   #scheduleNextArrival(isVip = false, serverId = null) {
     if (this.disableArrivals) return;
-    const type = isVip ? EventType.ARRIVAL_VIP : EventType.ARRIVAL;
+    let type = isVip ? EventType.ARRIVAL_VIP : EventType.ARRIVAL;
+    
+    if (this.flags.hasTandemRamps && this.flags.hasPriority) {
+      type = EventType.ARRIVAL_VIP;
+    } else if (this.flags.hasTandemRamps && !this.flags.hasPriority) {
+      return;
+    }
     
     if (this.topology === SystemTopology.ISOLATED && serverId !== null) {
       const serverIdx = serverId - 1;
@@ -508,7 +540,7 @@ export class Simulator {
       if (!this.fel.some(e => e.type === EventType.ARRIVAL || e.type === EventType.ARRIVAL_VIP)) {
         const time = this.clock + this.generators.arrival.next();
         if (time <= this.config.startTime + this.config.maxTime) {
-          this.fel.push(createEvent(time, EventType.ARRIVAL, {}));
+          this.fel.push(createEvent(time, type, {}));
         }
       }
     }
@@ -646,8 +678,15 @@ export class Simulator {
     client.passedSecurityZone = false;
     server.setState(ServerState.BUSY, this.clock);
     server.clientInService = client;
-    const gen = this.serviceGenerators[server.id - 1] || this.serviceGenerators[0];
-    const duration = gen.next();
+    
+    let duration;
+    if (client.priority === ClientPriority.VIP && this.generators.vipService) {
+      duration = this.generators.vipService.next();
+    } else {
+      const gen = this.serviceGenerators[server.id - 1] || this.serviceGenerators[0];
+      duration = gen.next();
+    }
+    
     server.serviceEndTime = this.clock + duration;
     this.fel.push(createEvent(server.serviceEndTime, EventType.SERVICE_END, { serverId: server.id, clientId: client.id }));
   }
@@ -965,6 +1004,43 @@ export class Simulator {
     }
   }
 
+  /**
+   * Maneja el fin del abordaje de una rampa.
+   * Coloca el cliente normal (avión para despegue) en el sistema y agenda inmediatamente el siguiente abordaje.
+   * @param {Object} event - Evento extraído de la FEL.
+   */
+  #handleRampBoardingComplete(event) {
+    const rampId = event.data.rampId;
+    
+    const client = this.#createClient(this.clock, false);
+    client.priority = ClientPriority.NORMAL; // Forzar normal
+    this.stats.totalArrivals++;
+    
+    if (this.topology === SystemTopology.SINGLE_QUEUE) {
+      const freeServer = this.servers.find(s => s.state === ServerState.IDLE && s.present);
+      
+      if (freeServer && (!this.flags.hasSecurityZone || !this.szBusy)) {
+        if (this.flags.hasSecurityZone) {
+          this.#sendClientThroughSecurityZone(freeServer, client);
+          this.#recordHistory(EventType.RAMP_BOARDING_COMPLETE, `C${client.id} (Rampa ${rampId}) -> SZ`);
+        } else {
+          this.#startService(freeServer, client);
+          this.#recordHistory(EventType.RAMP_BOARDING_COMPLETE, `C${client.id} (Rampa ${rampId}) -> S${freeServer.id}`);
+        }
+      } else {
+        this.queues.default.push(client);
+        this.#scheduleAbandonment(client);
+        this.#recordHistory(EventType.RAMP_BOARDING_COMPLETE, `C${client.id} (Rampa ${rampId}) -> cola`);
+      }
+    }
+    
+    // Abastecimiento infinito: reprogramar la rampa para su próximo fin de abordaje
+    const time = this.clock + this.generators.rampBoarding.next();
+    if (time <= this.config.startTime + this.config.maxTime) {
+      this.fel.push(createEvent(time, EventType.RAMP_BOARDING_COMPLETE, { rampId }));
+    }
+  }
+
   #finalizeAtHorizon() {
     if (this.finishedAtHorizon) return;
 
@@ -1009,6 +1085,7 @@ export class Simulator {
       case EventType.SERVER_BREAK_END: this.#handleServerBreakEnd(event); break;
       case EventType.ABANDONMENT: this.#handleAbandonment(event); break;
       case EventType.ARRIVAL_PS: this.#handleArrivalPS(event); break;
+      case EventType.RAMP_BOARDING_COMPLETE: this.#handleRampBoardingComplete(event); break;
     }
 
     // Re-evalúa checkpoints en cada paso para ver si se toman fotos
