@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import TimeInput from './TimeInput';
 import TimeField from './TimeField';
 import { CheckpointsConfig } from './CheckpointsConfig';
-import { Settings, Dices, Clock } from 'lucide-react';
+import { Settings, Dices, Clock, Upload } from 'lucide-react';
 import { academicPresets } from '../presets';
 import { scaleTimeString } from '../utils/timeParser';
 
@@ -28,8 +28,60 @@ function InfoTooltip({ text }) {
 export function ConfigPanel({ 
   config, flags, initialState, updateConfig, updateFlags, updateInitialState, 
   checkpointRules, setCheckpointRules, generateRandomScenario,
-  activePreset, applyPreset
+  activePreset, applyPreset, onImportPreset
 }) {
+  const [showImport, setShowImport] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importError, setImportError] = useState('');
+  const [importSuccess, setImportSuccess] = useState(false);
+
+  const handleImportApply = () => {
+    try {
+      if (!importText.trim()) {
+        setImportError('El texto está vacío');
+        return;
+      }
+      
+      // Intentar limpiar posibles envoltorios markdown como ```json ... ```
+      let cleanedText = importText.trim();
+      if (cleanedText.startsWith('```')) {
+        const matches = cleanedText.match(/^```(?:json)?([\s\S]*?)```$/);
+        if (matches && matches[1]) {
+          cleanedText = matches[1].trim();
+        }
+      }
+      
+      const parsed = JSON.parse(cleanedText);
+      
+      if (!parsed.config || !parsed.flags || !parsed.initialState) {
+        setImportError('El JSON debe contener los objetos "config", "flags" e "initialState".');
+        return;
+      }
+
+      if (typeof parsed.config.maxTime !== 'number' || typeof parsed.config.startTime !== 'number') {
+        setImportError('El JSON es inválido: "config.maxTime" y "config.startTime" deben ser números.');
+        return;
+      }
+
+      if (!parsed.checkpointRules) parsed.checkpointRules = [];
+      if (!parsed.vocab) {
+        parsed.vocab = { client: 'Cliente', arrive: 'Arriba', served: 'Atendido', abandon: 'Abandona' };
+      }
+
+      onImportPreset(parsed);
+      setImportSuccess(true);
+      setImportError('');
+      
+      setTimeout(() => {
+        setShowImport(false);
+        setImportSuccess(false);
+        setImportText('');
+      }, 1000);
+    } catch (e) {
+      setImportError(`JSON inválido: ${e.message}`);
+    }
+  };
+
   return (
     <section className="config-section">
       <div className="card">
@@ -44,7 +96,17 @@ export function ConfigPanel({
               {Object.entries(academicPresets).map(([id, preset]) => (
                 <option key={id} value={id}>{preset.label}</option>
               ))}
+              {activePreset === 'imported' && (
+                <option value="imported">📥 Preset Importado</option>
+              )}
             </select>
+            <button 
+              className={`btn btn-secondary btn-icon btn-sm ${showImport ? 'active' : ''}`}
+              onClick={() => setShowImport(prev => !prev)}
+              title="Importar preset desde texto de IA (JSON)"
+            >
+              <Upload size={14}/> Importar
+            </button>
             <button 
               className="btn btn-secondary btn-icon btn-sm" 
               onClick={() => {
@@ -70,6 +132,36 @@ export function ConfigPanel({
             </button>
           </div>
         </div>
+
+        {showImport && (
+          <div className="import-container">
+            <textarea
+              className={`import-textarea ${importError ? 'error' : importSuccess ? 'success' : ''}`}
+              placeholder="Pegue aquí el preset JSON generado por la IA..."
+              value={importText}
+              onChange={(e) => {
+                setImportText(e.target.value);
+                setImportError('');
+                setImportSuccess(false);
+              }}
+            />
+            {importError && <p className="import-error-msg">⚠️ {importError}</p>}
+            {importSuccess && <p className="import-success-msg">✓ Configuración cargada con éxito.</p>}
+            <div className="import-actions">
+              <button className="btn btn-primary btn-sm" onClick={handleImportApply}>
+                Aplicar
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={() => {
+                setShowImport(false);
+                setImportText('');
+                setImportError('');
+                setImportSuccess(false);
+              }}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="config-grid">
 
@@ -244,6 +336,14 @@ export function ConfigPanel({
                     placeholder="60"
                   />
                 </label>
+                <label className="checkbox" style={{ marginTop: '10px' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={flags.catastrophicBreakdown || false} 
+                    onChange={(e) => updateFlags('catastrophicBreakdown', e.target.checked)} 
+                  />
+                  <span>Rotura Catastrófica (Vacía la cola)</span>
+                </label>
               </>
             )}
           </div>
@@ -282,16 +382,22 @@ export function ConfigPanel({
               <span>Zona de Seguridad</span>
             </label>
             {flags.hasSecurityZone && (
-              <label>
-                <span>ΔtSZ→PS — Tiempo de traslado ({config.timeUnit === 'min' ? 'min' : 'seg'})</span>
-                <TimeField 
-                  value={config.travelTime} 
-                  onChange={(val) => updateConfig('travelTime', val)}
-                  distType={config.travelDistType || 'uniform'}
-                  onDistTypeChange={(val) => updateConfig('travelDistType', val)}
-                  placeholder="10"
-                />
-              </label>
+              <>
+                <label className="checkbox" style={{ paddingLeft: '10px' }}>
+                  <input type="checkbox" checked={flags.vipSkipsSecurityZone || false} onChange={(e) => updateFlags('vipSkipsSecurityZone', e.target.checked)} />
+                  <span>Los VIP ignoran la Zona de Seguridad</span>
+                </label>
+                <label>
+                  <span>ΔtSZ→PS — Tiempo de traslado ({config.timeUnit === 'min' ? 'min' : 'seg'})</span>
+                  <TimeField 
+                    value={config.travelTime} 
+                    onChange={(val) => updateConfig('travelTime', val)}
+                    distType={config.travelDistType || 'uniform'}
+                    onDistTypeChange={(val) => updateConfig('travelDistType', val)}
+                    placeholder="10"
+                  />
+                </label>
+              </>
             )}
           </div>
 

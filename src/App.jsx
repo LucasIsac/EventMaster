@@ -7,6 +7,7 @@ import { StatsPanel } from './components/StatsPanel';
 import { AdvancedTable } from './components/AdvancedTable';
 import { CheckpointsModal } from './components/CheckpointsModal';
 import { DiagramsModal } from './components/DiagramsModal';
+import { AcademicReportModal } from './components/AcademicReportModal';
 import { scaleTimeString } from './utils/timeParser';
 import { BarChart2 } from 'lucide-react';
 import './App.css';
@@ -27,6 +28,7 @@ function App() {
   const [checkpointRules, setCheckpointRules] = useState(academicPresets.default.checkpointRules);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDiagramsModalOpen, setIsDiagramsModalOpen] = useState(false);
+  const [isAcademicReportModalOpen, setIsAcademicReportModalOpen] = useState(false);
   const intervalRef = useRef(null);
 
   const applyPreset = useCallback((presetId) => {
@@ -38,6 +40,16 @@ function App() {
     setInitialState(preset.initialState);
     setCheckpointRules(preset.checkpointRules);
     setVocab(preset.vocab);
+  }, []);
+
+  const importPreset = useCallback((presetData) => {
+    if (!presetData) return;
+    setActivePreset('imported');
+    if (presetData.config) setConfig(presetData.config);
+    if (presetData.flags) setFlags(presetData.flags);
+    if (presetData.initialState) setInitialState(presetData.initialState);
+    if (presetData.checkpointRules) setCheckpointRules(presetData.checkpointRules);
+    if (presetData.vocab) setVocab(presetData.vocab);
   }, []);
 
   /**
@@ -319,6 +331,10 @@ function App() {
       headers.push(isMultiServer ? `Estado S${i + 1}` : 'Estado');
     }
 
+    if (flags.hasSecurityZone) {
+      headers.push('Zona Seguridad');
+    }
+
     if (flags.hasServerBreaks) {
       if (isMultiServer) {
         for (let i = 0; i < numServers; i++) {
@@ -378,6 +394,11 @@ function App() {
       // Estado PS
       for (let i = 0; i < numServers; i++) {
         row.push(getServerStateCode(entry.servers[i]));
+      }
+
+      // Zona Seguridad
+      if (flags.hasSecurityZone) {
+        row.push(entry.szBusy ? `C${entry.securityZoneClient?.id || '?'}` : '0');
       }
 
       // Descansos
@@ -444,6 +465,7 @@ function App() {
           generateRandomScenario={generateRandomScenario}
           activePreset={activePreset}
           applyPreset={applyPreset}
+          onImportPreset={importPreset}
         />
 
         <ControlPanel 
@@ -461,6 +483,7 @@ function App() {
           currentState={currentState} 
           openModal={() => setIsModalOpen(true)}
           openDiagramsModal={() => setIsDiagramsModalOpen(true)}
+          openAcademicReportModal={() => setIsAcademicReportModalOpen(true)}
         />
 
         <StatsPanel 
@@ -513,6 +536,13 @@ function App() {
         onClose={() => setIsDiagramsModalOpen(false)}
         config={config}
         flags={flags}
+      />
+      <AcademicReportModal
+        isOpen={isAcademicReportModalOpen}
+        onClose={() => setIsAcademicReportModalOpen(false)}
+        config={config}
+        flags={flags}
+        vocab={vocab}
       />
     </div>
   );

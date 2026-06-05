@@ -128,6 +128,10 @@ export function AdvancedTable({ history, flags, config, vocab }) {
                 <th rowSpan="2" className="th-server-group">Estado</th>
               )}
 
+              {flags.hasSecurityZone && (
+                <th rowSpan="2" className="th-special">Zona<br/>Seguridad</th>
+              )}
+
               {flags.hasServerBreaks && (
                 <th colSpan={breaksColSpan} className="th-special">Servidor (Descansos)</th>
               )}
@@ -235,6 +239,12 @@ export function AdvancedTable({ history, flags, config, vocab }) {
                   ) : (
                     <td className="td-state">
                       {getServerStateCode(entry.servers[0])}
+                    </td>
+                  )}
+
+                  {flags.hasSecurityZone && (
+                    <td className={`td-special ${entry.szBusy ? 'td-server-busy highlight-origin' : 'td-server-idle'}`} style={{ fontWeight: 'bold' }}>
+                      {entry.szBusy ? `C${entry.securityZoneClient?.id || '?'}` : '0'}
                     </td>
                   )}
 

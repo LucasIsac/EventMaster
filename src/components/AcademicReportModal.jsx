@@ -1,0 +1,144 @@
+import React from 'react';
+import { X, FileText } from 'lucide-react';
+
+export function AcademicReportModal({ isOpen, onClose, config, flags, vocab }) {
+  if (!isOpen) return null;
+
+  const clientName = vocab?.client || 'Clientes';
+
+  // 1. Representación con Simbología Habitual
+  const renderTopology = () => {
+    let topo = '[LL] --> ( Q )';
+    if (flags.hasSecurityZone) {
+      topo += ' --> [ SZ ]';
+    }
+    topo += ' --> [ PS ] --> [ FS ]';
+
+    if (config.topology === 'AISLADOS') {
+      return `Sistema de ${config.numServers} servidores en paralelo (Colas independientes):\n` +
+             Array.from({length: config.numServers}).map((_, i) => `S${i+1}: ${topo}`).join('\n');
+    } else if (config.topology === 'ENCADENADOS') {
+      let chained = '[LL]';
+      for(let i=0; i<config.numServers; i++) {
+        chained += ` --> ( Q${i+1} ) --> [ PS${i+1} ]`;
+      }
+      chained += ' --> [ FS ]';
+      return chained;
+    }
+    return topo;
+  };
+
+  // 2. Determinación de Eventos
+  const renderEvents = () => {
+    const events = [];
+    if (flags.hasPriority) {
+      events.push(`- Llegada VIP (LL_VIP): ${config.arrivalInterval} (Dist: ${config.arrivalDistType || 'uniform'})`);
+      events.push(`- Llegada Normal (LL_N): ${config.arrivalInterval} (Dist: ${config.arrivalDistType || 'uniform'})`);
+    } else {
+      events.push(`- Llegada al sistema (LL): ${config.arrivalInterval} (Dist: ${config.arrivalDistType || 'uniform'})`);
+    }
+
+    events.push(`- Fin de Servicio (FS): ${config.serviceTime} (Dist: ${config.serviceDistType || 'uniform'})`);
+
+    if (flags.hasServerBreaks) {
+      events.push(`- Salida del Servidor (SS): ${config.workTime} (Dist: ${config.workDistType || 'uniform'})`);
+      events.push(`- Llegada del Servidor (LS): ${config.restTime} (Dist: ${config.restDistType || 'uniform'})`);
+    }
+
+    if (flags.hasClientAbandonment) {
+      events.push(`- Abandono de cola (Ab): ${config.maxWaitTime} (Dist: ${config.patienceDistType || 'uniform'})`);
+    }
+    return events;
+  };
+
+  // 3. Variables del Sistema y Auxiliares
+  const renderVariables = () => {
+    const vars = [
+      'Variables de Estado:',
+      '- t: Reloj de la simulación',
+      '- PS: Estado del Puesto de Servicio (0=Libre, 1=Ocupado, A=Ausente)',
+      '- Q: Cantidad de clientes en cola'
+    ];
+    
+    if (flags.hasSecurityZone) {
+      vars.push('- SZ: Estado de la Zona de Seguridad (0=Libre, 1=Ocupado)');
+    }
+    if (flags.hasPriority) {
+      vars.push('- Q_VIP: Cantidad de clientes VIP en cola');
+    }
+
+    vars.push('');
+    vars.push('Variables Auxiliares:');
+    vars.push(`- Clientes_Atendidos: Cantidad total de ${clientName.toLowerCase()} que finalizaron el servicio`);
+    
+    if (flags.hasClientAbandonment) {
+      vars.push(`- Clientes_Abandonados: Cantidad total de ${clientName.toLowerCase()} que abandonaron la cola`);
+    }
+    return vars;
+  };
+
+  // 4. Encabezado de la Matriz de Simulación
+  const renderHeaders = () => {
+    let headers = ['Reloj (t)', 'Próx LL', 'Próx FS', 'Q', 'PS'];
+    if (flags.hasServerBreaks) {
+      headers.push('Próx SS');
+      headers.push('Próx LS');
+    }
+    if (flags.hasClientAbandonment) {
+      headers.push('Hora Abandono');
+    }
+    return `| ${headers.join(' | ')} |`;
+  };
+
+  const preStyle = { 
+    background: 'var(--bg-card)', 
+    padding: '12px', 
+    borderRadius: '6px', 
+    border: '1px solid var(--border)', 
+    fontSize: '0.9rem', 
+    overflowX: 'auto', 
+    whiteSpace: 'pre-wrap',
+    color: 'var(--text-color)'
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '800px', width: '90%' }}>
+        <div className="modal-header">
+          <h2><FileText size={20} /> Reporte Académico</h2>
+          <button className="close-btn" onClick={onClose}><X size={20} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          
+          <div>
+            <h3 style={{ marginBottom: '8px' }}>1. Representación con Simbología Habitual</h3>
+            <pre style={preStyle}>{renderTopology()}</pre>
+          </div>
+
+          <div>
+            <h3 style={{ marginBottom: '8px' }}>2. Determinación de Eventos</h3>
+            <pre style={preStyle}>{renderEvents().join('\n')}</pre>
+          </div>
+
+          <div>
+            <h3 style={{ marginBottom: '8px' }}>3. Variables del Sistema y Auxiliares</h3>
+            <pre style={preStyle}>{renderVariables().join('\n')}</pre>
+          </div>
+
+          <div>
+            <h3 style={{ marginBottom: '8px' }}>4. Encabezado de la Matriz de Simulación</h3>
+            <pre style={preStyle}>{renderHeaders()}</pre>
+          </div>
+
+          <div>
+            <h3 style={{ marginBottom: '8px' }}>5. Diagramas de Flujo</h3>
+            <p style={{ margin: 0, color: 'var(--text-muted)' }}>
+              Ver sección <strong>"Ver Lógica"</strong> para el despliegue en Mermaid.js de los diagramas de flujo detallados para cada evento activo.
+            </p>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
