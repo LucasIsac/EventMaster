@@ -152,9 +152,17 @@ function App() {
   useEffect(() => {
     if (!isRunning || !simulator) return;
 
-    // A partir de 10x, agrupamos pasos para no saturar los re-renders de React (mínimo 50ms de intervalo)
-    const intervalTime = Math.max(50, 500 / speed);
-    const stepsPerTick = speed > 10 ? Math.ceil(speed / 10) : 1;
+    // Aumentamos los pasos por tick exponencialmente en velocidades altas para acelerar mucho más (1-10x)
+    const intervalTime = Math.max(20, 400 / speed);
+    
+    let stepsPerTick = 1;
+    if (speed >= 10) stepsPerTick = 500;
+    else if (speed >= 9) stepsPerTick = 150;
+    else if (speed >= 8) stepsPerTick = 50;
+    else if (speed >= 7) stepsPerTick = 20;
+    else if (speed >= 6) stepsPerTick = 8;
+    else if (speed >= 5) stepsPerTick = 3;
+    else if (speed >= 4) stepsPerTick = 2;
 
     intervalRef.current = setInterval(() => {
       let finished = false;
