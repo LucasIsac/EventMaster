@@ -6,11 +6,13 @@ import {
   generateServiceEndDiagram,
   generateBreakStartDiagram,
   generateBreakEndDiagram,
-  generateAbandonmentDiagram
+  generateAbandonmentDiagram,
+  generateSecurityZoneEndDiagram
 } from '../utils/diagramGenerators';
 
 export function DiagramsModal({ isOpen, onClose, config, flags }) {
   const [activeTab, setActiveTab] = useState('arrival');
+  const [showGlossary, setShowGlossary] = useState(false);
   const mermaidRef = useRef(null);
 
   useEffect(() => {
@@ -31,6 +33,7 @@ export function DiagramsModal({ isOpen, onClose, config, flags }) {
       let diagramStr = '';
       if (activeTab === 'arrival') diagramStr = generateArrivalDiagram(config, flags);
       else if (activeTab === 'serviceEnd') diagramStr = generateServiceEndDiagram(config, flags);
+      else if (activeTab === 'securityZoneEnd') diagramStr = generateSecurityZoneEndDiagram(config, flags);
       else if (activeTab === 'breakStart') diagramStr = generateBreakStartDiagram(config, flags);
       else if (activeTab === 'breakEnd') diagramStr = generateBreakEndDiagram(config, flags);
       else if (activeTab === 'abandonment') diagramStr = generateAbandonmentDiagram(config, flags);
@@ -63,6 +66,9 @@ export function DiagramsModal({ isOpen, onClose, config, flags }) {
         <div className="tabs" style={{ display: 'flex', gap: '10px', padding: '15px 20px', borderBottom: '1px solid #e0e0e0', backgroundColor: '#f8f9fa' }}>
           <button className={`btn ${activeTab === 'arrival' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('arrival')}>Llegada</button>
           <button className={`btn ${activeTab === 'serviceEnd' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('serviceEnd')}>Fin de Servicio</button>
+          {flags.hasSecurityZone && (
+            <button className={`btn ${activeTab === 'securityZoneEnd' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('securityZoneEnd')}>Llegada a PS</button>
+          )}
           {flags.hasServerBreaks && (
             <>
               <button className={`btn ${activeTab === 'breakStart' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('breakStart')}>Salida a Descanso</button>
@@ -83,27 +89,46 @@ export function DiagramsModal({ isOpen, onClose, config, flags }) {
              position: 'absolute',
              bottom: '20px',
              right: '20px',
-             backgroundColor: '#f8f9fa',
-             border: '1px solid #ccc',
-             borderRadius: '8px',
-             padding: '12px',
-             fontSize: '0.8rem',
-             boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-             pointerEvents: 'none',
-             opacity: 0.95
+             display: 'flex',
+             flexDirection: 'column',
+             alignItems: 'flex-end',
+             gap: '10px'
            }}>
-             <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px', color: '#333' }}><Info size={14}/> Glosario Académico</h4>
-             <ul style={{ margin: 0, paddingLeft: '16px', listStyleType: 'circle', color: '#555', lineHeight: '1.4' }}>
-               <li><strong>t</strong> = Reloj de Simulación</li>
-               <li><strong>PS</strong> = Servidor (0=Libre, 1=Ocupado, A=Ausente)</li>
-               <li><strong>Q</strong> = Tamaño de Cola</li>
-               <li><strong>LL</strong> = Próx. Llegada (t + ΔtLL)</li>
-               <li><strong>FS</strong> = Fin Servicio (t + ΔtS)</li>
-               <li><strong>SS</strong> = Inicio Descanso (t + ΔT)</li>
-               <li><strong>LS</strong> = Fin Descanso (t + ΔD)</li>
-               <li><strong>Ab</strong> = Paciencia Límite (t + ΔSC)</li>
-               <li><strong>TR</strong> = Tiempo Remanente</li>
-             </ul>
+             <button 
+               className="btn btn-outline" 
+               onClick={() => setShowGlossary(!showGlossary)}
+               style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#fff', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
+             >
+               <Info size={16}/> {showGlossary ? 'Ocultar Glosario' : 'Ver Glosario'}
+             </button>
+
+             {showGlossary && (
+               <div style={{
+                 backgroundColor: '#f8f9fa',
+                 border: '1px solid #ccc',
+                 borderRadius: '8px',
+                 padding: '16px',
+                 fontSize: '0.85rem',
+                 boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                 opacity: 0.98,
+                 minWidth: '220px'
+               }}>
+                 <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: '#333', borderBottom: '1px solid #ddd', paddingBottom: '6px' }}>
+                   Glosario Académico
+                 </h4>
+                 <ul style={{ margin: 0, paddingLeft: '16px', listStyleType: 'circle', color: '#555', lineHeight: '1.5' }}>
+                   <li><strong>t</strong> = Reloj de Simulación</li>
+                   <li><strong>PS</strong> = Servidor (0=Libre, 1=Ocupado, A=Ausente)</li>
+                   <li><strong>Q</strong> = Tamaño de Cola</li>
+                   <li><strong>LL</strong> = Próx. Llegada (t + ΔtLL)</li>
+                   <li><strong>FS</strong> = Fin Servicio (t + ΔtS)</li>
+                   <li><strong>SS</strong> = Inicio Descanso (t + ΔT)</li>
+                   <li><strong>LS</strong> = Fin Descanso (t + ΔD)</li>
+                   <li><strong>Ab</strong> = Paciencia Límite (t + ΔSC)</li>
+                   <li><strong>TR</strong> = Tiempo Remanente</li>
+                 </ul>
+               </div>
+             )}
            </div>
         </div>
       </div>

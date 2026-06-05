@@ -30,14 +30,21 @@ export function generateArrivalDiagram(config, flags) {
     d += `  ${currentNode} --> H{"¿Servidor Libre?<br>PS == 0"}:::decision\n`;
     if (flags.hasSecurityZone) {
       d += `  H -->|Sí| I{"¿Z.Seguridad Libre?<br>SZ == 0"}:::decision\n`;
-      d += `  I -->|Sí| J["Cliente a Zona Seg<br>SZ = 1"]:::action\n`;
-      d += `  J --> K[/"Fin Zona Seguridad<br>FSZ = t + ΔtSZ"/]:::fel\n`;
+      
+      d += `  I -->|Sí| I2{"¿Es VIP y<br>VIP ignora SZ?"}:::decision\n`;
+      d += `  I2 -->|Sí| I3["Inicia Servicio<br>PS = 1"]:::action\n`;
+      d += `  I3 --> I4[/"Fin Servicio<br>FS = t + ΔtS"/]:::fel\n`;
+      d += `  I4 --> Z(["Fin Llegada"]):::startEnd\n`;
+      
+      d += `  I2 -->|No| J["Cliente a Zona Seg<br>SZ = 1"]:::action\n`;
+      d += `  J --> K[/"Fin Zona Seguridad<br>LL_PS = t + ΔtSZ"/]:::fel\n`;
+      d += `  K --> Z\n`;
+
       d += `  I -->|No| L{"¿Es VIP?<br>isVIP == 1"}:::decision\n`;
       d += `  L -->|Sí| M["A Cola VIP<br>Q_VIP = Q_VIP + 1"]:::action\n`;
       d += `  L -->|No| N["A Cola Normal<br>Q = Q + 1"]:::action\n`;
-      d += `  M --> Z(["Fin Llegada"]):::startEnd\n`;
+      d += `  M --> Z\n`;
       d += `  N --> Z\n`;
-      d += `  K --> Z\n`;
     } else {
       d += `  H -->|Sí| O["Inicia Servicio<br>PS = 1"]:::action\n`;
       d += `  O --> P[/"Fin Servicio<br>FS = t + ΔtS"/]:::fel\n`;
@@ -145,22 +152,49 @@ export function generateServiceEndDiagram(config, flags) {
     d += `  D --> E["Buscar prox cliente"]:::action\n`;
 
     if (config.topology === "COLA_UNICA") {
+      d += `  Z(["Fin Salida"]):::startEnd\n`;
       if (flags.hasPriority) {
         d += `  E --> F{"¿Hay VIPs?<br>Q_VIP > 0"}:::decision\n`;
         d += `  F -->|Sí| G["Extraer VIP<br>Q_VIP = Q_VIP - 1"]:::action\n`;
         d += `  F -->|No| H{"¿Hay Normales?<br>Q > 0"}:::decision\n`;
         d += `  H -->|Sí| I["Extraer Normal<br>Q = Q - 1"]:::action\n`;
         d += `  H -->|No| J["Servidor Libre<br>PS = 0"]:::action\n`;
-        d += `  G --> K["Inicia Servicio<br>PS = 1"]:::action\n`;
-        d += `  I --> K\n`;
+        
+        if (flags.hasSecurityZone) {
+          d += `  G --> G1{"¿VIP ignora SZ?"}:::decision\n`;
+          d += `  G1 -->|Sí| K["Inicia Servicio<br>PS = 1"]:::action\n`;
+          d += `  K --> L[/"Fin Servicio<br>FS = t + ΔtS"/]:::fel\n`;
+          d += `  L --> Z\n`;
+          
+          d += `  G1 -->|No| G2["Cliente a Zona Seg<br>SZ = 1"]:::action\n`;
+          d += `  G2 --> G3[/"Llegada a PS<br>LL_PS = t + ΔtSZ"/]:::fel\n`;
+          d += `  G3 --> Z\n`;
+          
+          d += `  I --> I1["Cliente a Zona Seg<br>SZ = 1"]:::action\n`;
+          d += `  I1 --> I2[/"Llegada a PS<br>LL_PS = t + ΔtSZ"/]:::fel\n`;
+          d += `  I2 --> Z\n`;
+        } else {
+          d += `  G --> K["Inicia Servicio<br>PS = 1"]:::action\n`;
+          d += `  I --> K\n`;
+          d += `  K --> L[/"Fin Servicio<br>FS = t + ΔtS"/]:::fel\n`;
+          d += `  L --> Z\n`;
+        }
       } else {
         d += `  E --> H{"¿Hay fila?<br>Q > 0"}:::decision\n`;
         d += `  H -->|Sí| I["Extraer Cliente<br>Q = Q - 1"]:::action\n`;
         d += `  H -->|No| J["Servidor Libre<br>PS = 0"]:::action\n`;
-        d += `  I --> K["Inicia Servicio<br>PS = 1"]:::action\n`;
+        
+        if (flags.hasSecurityZone) {
+          d += `  I --> I1["Cliente a Zona Seg<br>SZ = 1"]:::action\n`;
+          d += `  I1 --> I2[/"Llegada a PS<br>LL_PS = t + ΔtSZ"/]:::fel\n`;
+          d += `  I2 --> Z\n`;
+        } else {
+          d += `  I --> K["Inicia Servicio<br>PS = 1"]:::action\n`;
+          d += `  K --> L[/"Fin Servicio<br>FS = t + ΔtS"/]:::fel\n`;
+          d += `  L --> Z\n`;
+        }
       }
-      d += `  K --> L[/"Fin Servicio<br>FS = t + ΔtS"/]:::fel\n`;
-      d += `  L --> Z(["Fin Salida"]):::startEnd\n`;
+      
       d += `  J --> Z\n`;
     } else {
       // AISLADOS
@@ -227,6 +261,33 @@ export function generateAbandonmentDiagram(config, flags) {
   d += `  C -->|No| F["Ignorar (ya atendido)"]:::action\n`;
   d += `  F --> Z\n`;
 
+  
+  return d;
+}
+
+export function generateSecurityZoneEndDiagram(config, flags) {
+  let d = `flowchart TD\n${mermaidStyles}\n`;
+  if (!flags.hasSecurityZone) {
+    d += `  A(["Zona Seg OFF"]):::startEnd\n`;
+    return d;
+  }
+  
+  d += `  A(["Llegada a PS (Fin de SZ)<br>Actualizar t"]):::startEnd --> B["Liberar Zona Seg<br>SZ = 0"]:::action\n`;
+  d += `  B --> C{"¿PS Libre?<br>PS == 0"}:::decision\n`;
+  d += `  C -->|Sí| D["Inicia Servicio<br>PS = 1"]:::action\n`;
+  d += `  D --> E[/"Fin Servicio<br>FS = t + ΔtS"/]:::fel\n`;
+  d += `  E --> Z(["Fin Evento"]):::startEnd\n`;
+  
+  if (flags.hasPriority) {
+    d += `  C -->|No| F{"¿Es VIP?<br>isVIP == 1"}:::decision\n`;
+    d += `  F -->|Sí| G["A Cola VIP<br>Q_VIP = Q_VIP + 1"]:::action\n`;
+    d += `  F -->|No| H["A Cola Normal<br>Q = Q + 1"]:::action\n`;
+    d += `  G --> Z\n`;
+    d += `  H --> Z\n`;
+  } else {
+    d += `  C -->|No| H["A Cola Normal<br>Q = Q + 1"]:::action\n`;
+    d += `  H --> Z\n`;
+  }
   
   return d;
 }
