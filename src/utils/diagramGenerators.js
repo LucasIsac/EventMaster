@@ -27,12 +27,16 @@ export function generateArrivalDiagram(config, flags) {
   }
 
   if (config.topology === "COLA_UNICA") {
-    d += `  ${currentNode} --> H{"¿Servidor Libre?<br>PS == 0"}:::decision\n`;
+    const isMulti = config.numServers > 1;
+    const lblPs = isMulti ? "¿Algún PS Libre?<br>∃ PS(i) == 0" : "¿Servidor Libre?<br>PS == 0";
+    const lblInit = isMulti ? "Asignar PS<br>PS(i) = 1" : "Inicia Servicio<br>PS = 1";
+
+    d += `  ${currentNode} --> H{"${lblPs}"}:::decision\n`;
     if (flags.hasSecurityZone) {
       d += `  H -->|Sí| I{"¿Z.Seguridad Libre?<br>SZ == 0"}:::decision\n`;
       
       d += `  I -->|Sí| I2{"¿Es VIP y<br>VIP ignora SZ?"}:::decision\n`;
-      d += `  I2 -->|Sí| I3["Inicia Servicio<br>PS = 1"]:::action\n`;
+      d += `  I2 -->|Sí| I3["${lblInit}"]:::action\n`;
       d += `  I3 --> I4[/"Fin Servicio<br>FS = t + ΔtS"/]:::fel\n`;
       d += `  I4 --> Z(["Fin Llegada"]):::startEnd\n`;
       
@@ -46,7 +50,7 @@ export function generateArrivalDiagram(config, flags) {
       d += `  M --> Z\n`;
       d += `  N --> Z\n`;
     } else {
-      d += `  H -->|Sí| O["Inicia Servicio<br>PS = 1"]:::action\n`;
+      d += `  H -->|Sí| O["${lblInit}"]:::action\n`;
       d += `  O --> P[/"Fin Servicio<br>FS = t + ΔtS"/]:::fel\n`;
       d += `  P --> Z(["Fin Llegada"]):::startEnd\n`;
     }
@@ -82,12 +86,27 @@ export function generateArrivalDiagram(config, flags) {
     d += `  I -->|Sí| J["Inicia Servicio<br>PS(i) = 1"]:::action\n`;
     d += `  J --> K[/"Fin Servicio<br>FS(i) = t + ΔtS"/]:::fel\n`;
     d += `  K --> Z(["Fin Llegada"]):::startEnd\n`;
-    d += `  I -->|No| L["Encolar S(i)<br>Q(i) = Q(i) + 1"]:::action\n`;
-    if (flags.hasClientAbandonment) {
-      d += `  L --> M[/"Paciencia Límite<br>Ab = t + ΔSC"/]:::fel\n`;
-      d += `  M --> Z\n`;
+    
+    if (flags.hasPriority) {
+      d += `  I -->|No| L1{"¿Es VIP?<br>isVIP == 1"}:::decision\n`;
+      d += `  L1 -->|Sí| L2["A Cola VIP(i)<br>Q_VIP(i)++"]:::action\n`;
+      d += `  L1 -->|No| L3["A Cola Normal(i)<br>Q(i)++"]:::action\n`;
+      if (flags.hasClientAbandonment) {
+        d += `  L2 --> M[/"Paciencia Límite<br>Ab = t + ΔSC"/]:::fel\n`;
+        d += `  L3 --> M\n`;
+        d += `  M --> Z\n`;
+      } else {
+        d += `  L2 --> Z\n`;
+        d += `  L3 --> Z\n`;
+      }
     } else {
-      d += `  L --> Z\n`;
+      d += `  I -->|No| L["Encolar S(i)<br>Q(i) = Q(i) + 1"]:::action\n`;
+      if (flags.hasClientAbandonment) {
+        d += `  L --> M[/"Paciencia Límite<br>Ab = t + ΔSC"/]:::fel\n`;
+        d += `  M --> Z\n`;
+      } else {
+        d += `  L --> Z\n`;
+      }
     }
   } else if (config.topology === "ENCADENADOS") {
     d += `  ${currentNode} --> H["Llegada a S1"]:::action\n`;
@@ -199,9 +218,17 @@ export function generateServiceEndDiagram(config, flags) {
     } else {
       // AISLADOS
       d += `  E --> F{"¿Hay fila local?<br>Q(i) > 0"}:::decision\n`;
-      d += `  F -->|Sí| G["Extraer Cliente<br>Q(i) = Q(i) - 1"]:::action\n`;
+      if (flags.hasPriority) {
+        d += `  F -->|Sí| G1{"¿VIPs en S(i)?<br>Q_VIP(i) > 0"}:::decision\n`;
+        d += `  G1 -->|Sí| G2["Extraer VIP<br>Q_VIP(i)--"]:::action\n`;
+        d += `  G1 -->|No| G3["Extraer Normal<br>Q(i)--"]:::action\n`;
+        d += `  G2 --> I["Inicia Servicio<br>PS(i) = 1"]:::action\n`;
+        d += `  G3 --> I\n`;
+      } else {
+        d += `  F -->|Sí| G["Extraer Cliente<br>Q(i) = Q(i) - 1"]:::action\n`;
+        d += `  G --> I["Inicia Servicio<br>PS(i) = 1"]:::action\n`;
+      }
       d += `  F -->|No| H["Servidor Libre<br>PS(i) = 0"]:::action\n`;
-      d += `  G --> I["Inicia Servicio<br>PS(i) = 1"]:::action\n`;
       d += `  I --> J[/"Fin Servicio<br>FS(i) = t + ΔtS"/]:::fel\n`;
       d += `  J --> Z(["Fin Salida"]):::startEnd\n`;
       d += `  H --> Z\n`;
