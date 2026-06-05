@@ -27,7 +27,8 @@ export const ServerState = {
 export const SystemTopology = {
   ISOLATED: 'AISLADOS',
   SINGLE_QUEUE: 'COLA_UNICA',
-  CHAINED: 'ENCADENADOS'
+  CHAINED: 'ENCADENADOS',
+  TOTEM_SPECIALISTS: 'TOTEM_SPECIALISTS'
 };
 
 /**
@@ -269,6 +270,9 @@ export class Simulator {
     if (this.config.vipServiceTime) {
       this.generators.vipService = getGenerator(this.config.vipServiceTime, this.config.vipServiceDistType || 'uniform');
     }
+    if (this.topology === SystemTopology.TOTEM_SPECIALISTS) {
+      this.generators.specialistService = getGenerator(this.config.specialistServiceTime || '0', this.config.serviceDistType || 'uniform');
+    }
 
     this.initialState = initialState;
     this.clock = this.config.startTime; // El reloj inicia en la hora absoluta elegida (ej. 28800s para 8:00 AM)
@@ -277,7 +281,8 @@ export class Simulator {
     // Estructuras de cola globales para la topología de COLA_UNICA
     this.queues = {
       default: [], // Cola para clientes normales (Prioridad A)
-      vip: []      // Cola para clientes VIP (Prioridad B)
+      vip: [],     // Cola para clientes VIP (Prioridad B)
+      specialists: [] // Cola específica para especialistas en TOTEM_SPECIALISTS
     };
 
     // Inicialización del pool de servidores del sistema
@@ -294,7 +299,9 @@ export class Simulator {
       serviceCompletions: 0,              // Finalizaciones de etapa/servicio, útil en topologías encadenadas
       workCycles: 0,                      // Total de ciclos de trabajo iniciados
       restCycles: 0,                      // Total de descansos de servidor completados
-      totalArrivals: 0                    // Total de arribos registrados en el sistema
+      totalArrivals: 0,                   // Total de arribos registrados en el sistema
+      abandonedTotem: 0,                  // Abandonos por paciencia (10 min) en fila del tótem
+      abandonedWaitingRoom: 0             // Abandonos por falta de asiento (Sala de Espera)
     };
 
     this.history = [];             // Historial paso a paso del estado para poblar las grillas y diagramas en la UI
@@ -479,7 +486,7 @@ export class Simulator {
         }
       }
     } else {
-      // Cola Única o Encadenados: un único flujo de llegadas; la prioridad se decide por cliente.
+      // Cola Única, Encadenados o TOTEM_SPECIALISTS: un único flujo de llegadas; la prioridad se decide por cliente.
       if (!this.firstArrivalScheduled) {
         this.firstArrivalScheduled = true;
         const time = this.clock + this.generators.arrival.next();
@@ -664,6 +671,16 @@ export class Simulator {
         }
       }
       this.#recordHistory(historyEventType, `C${client.id} llega -> Etapa 1 (S1)`);
+    } else if (this.topology === SystemTopology.TOTEM_SPECIALISTS) {
+      // Los clientes llegan al Tótem (Servidor 1)
+      const totem = this.servers[0];
+      if (totem.state === ServerState.IDLE && totem.present) {
+        this.#startService(totem, client);
+      } else {
+        totem.queue.push(client);
+        this.#scheduleAbandonment(client);
+      }
+      this.#recordHistory(historyEventType, `C${client.id} llega -> Tótem`);
     }
   }
 
@@ -682,6 +699,8 @@ export class Simulator {
     let duration;
     if (client.priority === ClientPriority.VIP && this.generators.vipService) {
       duration = this.generators.vipService.next();
+    } else if (this.topology === SystemTopology.TOTEM_SPECIALISTS && server.id > 1 && this.generators.specialistService) {
+      duration = this.generators.specialistService.next();
     } else {
       const gen = this.serviceGenerators[server.id - 1] || this.serviceGenerators[0];
       duration = gen.next();
@@ -805,6 +824,35 @@ export class Simulator {
       } else {
         nextServer.queue.push(client);
       }
+    } else if (this.topology === SystemTopology.TOTEM_SPECIALISTS && serverId === 1) {
+      // El cliente terminó en el Tótem y pasa a la sala de espera
+      const seats = this.config.specialistSeats || 10;
+      const queueLen = this.queues.specialists.length;
+      
+      if (queueLen >= seats) {
+        // Asientos ocupados: probabilidad de abandono
+        const prob = this.config.balkingProbability !== undefined ? parseFloat(this.config.balkingProbability) : 1.0;
+        if (Math.random() < prob) {
+          // Abandona por no tener asiento
+          this.stats.abandonedWaitingRoom++;
+          this.stats.clientsAbandoned++;
+          nextAction = `C${clientId} abandona sala de espera (sin asiento)`;
+        } else {
+          // Decide quedarse de pie
+          this.queues.specialists.push(client);
+          nextAction = `C${clientId} espera de pie (sin asiento)`;
+        }
+      } else {
+        // Hay asientos, busca un especialista libre
+        const freeSpecialist = this.servers.slice(1).find(s => s.state === ServerState.IDLE && s.present);
+        if (freeSpecialist) {
+          this.#startService(freeSpecialist, client);
+          nextAction = `C${clientId} avanza a Especialista ${freeSpecialist.id}`;
+        } else {
+          this.queues.specialists.push(client);
+          nextAction = `C${clientId} se sienta a esperar`;
+        }
+      }
     } else {
       // El cliente sale definitivamente de la red de servidores del sistema
       nextAction = `C${clientId} termina servicio y sale del sistema`;
@@ -840,6 +888,12 @@ export class Simulator {
     if (this.topology === SystemTopology.SINGLE_QUEUE) {
       // En cola única, los clientes VIP tienen absoluta prioridad de atención
       nextClient = this.queues.vip.shift() || this.queues.default.shift();
+    } else if (this.topology === SystemTopology.TOTEM_SPECIALISTS) {
+      if (server.id === 1) {
+        nextClient = server.queue.shift(); // El Tótem usa su propia cola
+      } else {
+        nextClient = this.queues.specialists.shift(); // Especialistas usan la sala compartida
+      }
     } else {
       if (this.flags.hasPriority) {
         const vipIdx = server.queue.findIndex(c => c.priority === ClientPriority.VIP);
@@ -997,6 +1051,9 @@ export class Simulator {
     // Si el cliente todavía estaba esperando, concreta el abandono e incrementa métricas
     if (client) {
       this.stats.clientsAbandoned++;
+      if (this.topology === SystemTopology.TOTEM_SPECIALISTS) {
+        this.stats.abandonedTotem++;
+      }
       if (this.clock - this.config.startTime <= 3600) {
         this.stats.abandonmentsFirstHour++;
       }

@@ -564,5 +564,39 @@ export const academicPresets = {
       busyUntil: 0
     },
     checkpointRules: []
+  },
+  nuevo_ejercicio_totem: {
+    label: "Ejercicio Tótem-Consultorios",
+    vocab: { client: "Pacientes", arrive: "llega al tótem", served: "Atendidos", abandon: "Abandonos" },
+    config: {
+      maxTime: 28800,
+      startTime: 0,
+      arrivalInterval: '120',
+      serviceTime: '300 - 360',
+      specialistServiceTime: '900 - 1200',
+      workTime: '0',
+      restTime: '0',
+      maxWaitTime: '600',
+      travelTime: '0',
+      topology: 'TOTEM_SPECIALISTS',
+      numServers: 3,
+      specialistSeats: 10,
+      balkingProbability: 1.0
+    },
+    flags: {
+      hasServerBreaks: false,
+      hasClientAbandonment: true,
+      hasPriority: false,
+      hasSecurityZone: false,
+      disableArrivals: false
+    },
+    initialState: {
+      clientsInQueue: 0,
+      vipClientsInQueue: 0,
+      initialWaitTime: 0,
+      serverBusy: false,
+      busyUntil: 0
+    },
+    checkpointRules: []
   }
 };

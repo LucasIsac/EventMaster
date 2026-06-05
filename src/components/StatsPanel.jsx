@@ -78,6 +78,12 @@ export function StatsPanel({ currentState, formatTime, vocab, startTime = 0 }) {
             <div>
               <p><strong>{vocab?.served || 'Atendidos'}:</strong> {currentState.stats.clientsServed}</p>
               <p><strong>{vocab?.abandon || 'Abandonados'}:</strong> {currentState.stats.clientsAbandoned}</p>
+              {currentState.stats.abandonedTotem !== undefined && (
+                <p><strong>Abandonos en Tótem:</strong> {currentState.stats.abandonedTotem}</p>
+              )}
+              {currentState.stats.abandonedWaitingRoom !== undefined && (
+                <p><strong>Abandonos en Sala de Espera:</strong> {currentState.stats.abandonedWaitingRoom}</p>
+              )}
             </div>
           </div>
         </div>

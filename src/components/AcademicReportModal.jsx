@@ -17,13 +17,18 @@ export function AcademicReportModal({ isOpen, onClose, config, flags, vocab }) {
     if (config.topology === 'AISLADOS') {
       return `Sistema de ${config.numServers} servidores en paralelo (Colas independientes):\n` +
              Array.from({length: config.numServers}).map((_, i) => `S${i+1}: ${topo}`).join('\n');
-    } else if (config.topology === 'ENCADENADOS') {
       let chained = '[LL]';
       for(let i=0; i<config.numServers; i++) {
         chained += ` --> ( Q${i+1} ) --> [ PS${i+1} ]`;
       }
       chained += ' --> [ FS ]';
       return chained;
+    } else if (config.topology === 'TOTEM_SPECIALISTS') {
+      const numSpecialists = config.numServers - 1;
+      let specialistsFlow = Array.from({length: numSpecialists}).map((_, i) => `[ Especialista ${i+1} ]`).join(' / ');
+      return `[Llegada] --> ( Fila Tótem ) --> [ Tótem ] --> ( Sala Espera ) --> ${specialistsFlow} --> [ Atendidos ]\n` + 
+             `      |                                 |\n` +
+             `    [Abandona > 10m]                  [Abandona sin asiento]`;
     }
     return topo;
   };
@@ -38,7 +43,12 @@ export function AcademicReportModal({ isOpen, onClose, config, flags, vocab }) {
       events.push(`- Llegada al sistema (LL): ${config.arrivalInterval} (Dist: ${config.arrivalDistType || 'uniform'})`);
     }
 
-    events.push(`- Fin de Servicio (FS): ${config.serviceTime} (Dist: ${config.serviceDistType || 'uniform'})`);
+    if (config.topology === 'TOTEM_SPECIALISTS') {
+      events.push(`- Fin de Servicio (Tótem): ${config.serviceTime} (Dist: ${config.serviceDistType || 'uniform'})`);
+      events.push(`- Fin de Servicio (Consultorios): ${config.specialistServiceTime} (Dist: ${config.serviceDistType || 'uniform'})`);
+    } else {
+      events.push(`- Fin de Servicio (FS): ${config.serviceTime} (Dist: ${config.serviceDistType || 'uniform'})`);
+    }
 
     if (flags.hasServerBreaks) {
       events.push(`- Salida del Servidor (SS): ${config.workTime} (Dist: ${config.workDistType || 'uniform'})`);
@@ -55,10 +65,18 @@ export function AcademicReportModal({ isOpen, onClose, config, flags, vocab }) {
   const renderVariables = () => {
     const vars = [
       'Variables de Estado:',
-      '- t: Reloj de la simulación',
-      '- PS: Estado del Puesto de Servicio (0=Libre, 1=Ocupado, A=Ausente)',
-      '- Q: Cantidad de clientes en cola'
+      '- t: Reloj de la simulación'
     ];
+
+    if (config.topology === 'TOTEM_SPECIALISTS') {
+      vars.push('- Q_totem: Cantidad de pacientes esperando en la fila del tótem');
+      vars.push('- estado_totem: Estado del servidor tótem (0=Libre, 1=Ocupado)');
+      vars.push('- Q_sala: Cantidad de pacientes esperando en la sala de espera (capacidad=10)');
+      vars.push(`- estado_cons: Estado de los ${config.numServers - 1} consultorios (0=Libre, 1=Ocupado)`);
+    } else {
+      vars.push('- PS: Estado del Puesto de Servicio (0=Libre, 1=Ocupado, A=Ausente)');
+      vars.push('- Q: Cantidad de clientes en cola');
+    }
     
     if (flags.hasSecurityZone) {
       vars.push('- SZ: Estado de la Zona de Seguridad (0=Libre, 1=Ocupado)');
@@ -71,7 +89,10 @@ export function AcademicReportModal({ isOpen, onClose, config, flags, vocab }) {
     vars.push('Variables Auxiliares:');
     vars.push(`- Clientes_Atendidos: Cantidad total de ${clientName.toLowerCase()} que finalizaron el servicio`);
     
-    if (flags.hasClientAbandonment) {
+    if (config.topology === 'TOTEM_SPECIALISTS') {
+      vars.push(`- total_abandonos_totem: Pacientes que superan ${config.maxWaitTime}s en fila del tótem`);
+      vars.push(`- total_abandonos_sala: Pacientes que abandonan al ver la sala de espera llena (>= ${config.specialistSeats} asientos)`);
+    } else if (flags.hasClientAbandonment) {
       vars.push(`- Clientes_Abandonados: Cantidad total de ${clientName.toLowerCase()} que abandonaron la cola`);
     }
     return vars;
