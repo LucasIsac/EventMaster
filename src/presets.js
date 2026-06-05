@@ -1,6 +1,6 @@
 export const academicPresets = {
   parcial_aceitunas: {
-    label: "Parcial - Clasificadora de Aceitunas",
+    label: "Clasificadora de Aceitunas",
     vocab: { client: "Aceitunas", arrive: "Llega a tolva", served: "Clasificadas", abandon: "Descartes" },
     config: {
       maxTime: 28800,
