@@ -1,4 +1,36 @@
 export const academicPresets = {
+  pago_online: {
+    label: "Sitio de Pago On Line (Caídas y Pérdida de Claves)",
+    vocab: { client: "Claves", arrive: "Ingresa clave", served: "Encriptadas", abandon: "Perdidas" },
+    config: {
+      maxTime: 3600,
+      startTime: 0,
+      arrivalInterval: '1.24 - 1.38',
+      serviceTime: '1.20 - 3.32',
+      workTime: '126 - 258',
+      restTime: '25 - 32',
+      maxWaitTime: 'Infinity',
+      travelTime: '0',
+      topology: 'SINGLE_QUEUE',
+      numServers: 1
+    },
+    flags: {
+      hasServerBreaks: true,
+      catastrophicBreakdown: true,
+      hasClientAbandonment: false,
+      hasPriority: false,
+      hasSecurityZone: false,
+      disableArrivals: false
+    },
+    initialState: {
+      clientsInQueue: 0,
+      vipClientsInQueue: 0,
+      initialWaitTime: 0,
+      serverBusy: false,
+      busyUntil: 0
+    },
+    checkpointRules: []
+  },
   parcial_aceitunas: {
     label: "Clasificadora de Aceitunas",
     vocab: { client: "Aceitunas", arrive: "Llega a tolva", served: "Clasificadas", abandon: "Descartes" },

@@ -293,7 +293,8 @@ export class Simulator {
     // Acumuladores estadísticos del sistema
     this.stats = {
       clientsServed: 0,                   // Total de clientes atendidos que salieron del sistema
-      clientsAbandoned: 0,                // Total de clientes que abandonaron por pérdida de paciencia
+      clientsAbandoned: 0,                // Total de clientes que abandonaron por pérdida de paciencia o caídas
+      clavesPerdidas: 0,                  // Total de claves/clientes perdidos por caídas del sistema
       abandonmentsFirstHour: 0,           // Cantidad de abandonos dentro de los primeros 3600 segundos (métrica académica)
       clientsServedUntilSecondBreak: 0,   // Clientes atendidos antes de que ocurra el segundo descanso en total
       serviceCompletions: 0,              // Finalizaciones de etapa/servicio, útil en topologías encadenadas
@@ -956,6 +957,7 @@ export class Simulator {
       if (oldState === ServerState.BUSY) totalDescartados += 1;
 
       this.stats.clientsAbandoned += totalDescartados;
+      this.stats.clavesPerdidas += totalDescartados;
       
       this.queues.default = [];
       this.queues.vip = [];
@@ -964,10 +966,12 @@ export class Simulator {
 
       server.clientInService = null;
       server.serviceEndTime = null;
+      server.pausedClient = null;
+      server.pausedServiceRemaining = null;
       
       this.fel = this.fel.filter(e => !(e.type === EventType.SERVICE_END && e.data.serverId === server.id));
 
-      this.#recordHistory(EventType.SERVER_BREAK_START, `S${server.id} se rompe -> ${totalDescartados} descartes`);
+      this.#recordHistory(EventType.SERVER_BREAK_START, `S${server.id} sufre caída -> ${totalDescartados} descartes/claves perdidas`);
     } else {
       if (oldState === ServerState.BUSY) {
         // Guarda el tiempo remanente de servicio para reanudarlo posteriormente

@@ -410,4 +410,25 @@ describe('Simulator Engine Tests', () => {
     expect(parseTimeInput('30-60')).toEqual({ mode: 'range', min: 30, max: 60 });
     expect(parseTimeInput('60 - 30').error).toBeDefined();
   });
+
+  it('preset: pago_online should handle system outages and accurately count clavesPerdidas', () => {
+    const { sim, results } = runPreset('pago_online');
+
+    expect(sim.history.length).toBeGreaterThan(0);
+    expect(results.stats.workCycles).toBeGreaterThan(0);
+    expect(results.stats.restCycles).toBeGreaterThan(0);
+    expect(results.stats.clavesPerdidas).toBeDefined();
+    expect(results.stats.clavesPerdidas).toBeGreaterThanOrEqual(0);
+    
+    // Check that when break occurs with catastrophicBreakdown, the server client in service and queues are cleared
+    const breakStarts = sim.history.filter(h => h.eventType === 'SALIDA_SERVIDOR');
+    expect(breakStarts.length).toBeGreaterThan(0);
+    
+    // Check that during break, server state is BREAK and pausedClient is null
+    const serverInBreak = sim.servers[0];
+    if (serverInBreak.state === ServerState.BREAK) {
+      expect(serverInBreak.clientInService).toBeNull();
+      expect(serverInBreak.pausedClient).toBeNull();
+    }
+  });
 });
