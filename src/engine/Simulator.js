@@ -124,6 +124,7 @@ class Server {
     // Tiempos planificados para descansos (control de ciclos)
     this.nextBreakTime = null;     // Instante absoluto para iniciar el siguiente descanso
     this.nextWorkTime = null;      // Instante absoluto en que finalizará el descanso actual
+    this.tripsCompleted = 0;       // Cantidad de viajes realizados desde la última recarga
     
     // Variables para manejar la interrupción/pausa de servicio por descanso
     this.pausedServiceRemaining = null; // Segundos restantes de atención que faltaban cuando fue interrumpido
@@ -183,7 +184,11 @@ export class Simulator {
     this.config = { ...config };
     this.flags = { ...flags };
     this.disableArrivals = flags.disableArrivals || false;
-    this.topology = config.topology || SystemTopology.SINGLE_QUEUE;
+    this.maxQueueA = Number.isFinite(parseFloat(this.config.maxQueueA)) ? parseFloat(this.config.maxQueueA) : Infinity;
+    this.maxTripsPerBattery = Number.isFinite(parseFloat(this.config.maxTripsPerBattery)) ? parseFloat(this.config.maxTripsPerBattery) : null;
+    let topo = config.topology || SystemTopology.SINGLE_QUEUE;
+    if (topo === 'SINGLE_QUEUE') topo = SystemTopology.SINGLE_QUEUE;
+    this.topology = topo;
     this.numServers = parseInt(config.numServers) || 1;
 
     /**
@@ -300,9 +305,12 @@ export class Simulator {
       serviceCompletions: 0,              // Finalizaciones de etapa/servicio, útil en topologías encadenadas
       workCycles: 0,                      // Total de ciclos de trabajo iniciados
       restCycles: 0,                      // Total de descansos de servidor completados
+      rechargeCycles: 0,                  // Total de recargas de batería completadas
       totalArrivals: 0,                   // Total de arribos registrados en el sistema
       abandonedTotem: 0,                  // Abandonos por paciencia (10 min) en fila del tótem
-      abandonedWaitingRoom: 0             // Abandonos por falta de asiento (Sala de Espera)
+      abandonedWaitingRoom: 0,            // Abandonos por falta de asiento (Sala de Espera)
+      classARejected: 0,                  // Pallets Clase A derivados por saturación de la Fila A
+      maxVipWaitTime: 0                   // Tiempo máximo de espera en fila para Clase B
     };
 
     this.history = [];             // Historial paso a paso del estado para poblar las grillas y diagramas en la UI
@@ -510,6 +518,7 @@ export class Simulator {
    * @param {Server} server - Instancia del servidor.
    */
   #scheduleWorkCycle(server) {
+    if (this.maxTripsPerBattery && this.maxTripsPerBattery > 0) return;
     if (!this.flags.hasServerBreaks) return;
     if (server.present && server.nextBreakTime === null) {
       const duration = this.generators.workDuration.next();
@@ -640,8 +649,16 @@ export class Simulator {
         }
       } else {
         // Si no hay servidores disponibles, el cliente ingresa a la cola correspondiente
-        if (clientIsVip) this.queues.vip.push(client);
-        else this.queues.default.push(client);
+        if (clientIsVip) {
+          this.queues.vip.push(client);
+        } else {
+          if (this.maxQueueA !== Infinity && this.queues.default.length >= this.maxQueueA) {
+            this.stats.classARejected++;
+            this.#recordHistory(historyEventType, `C${client.id} desviado por saturación de la Fila A`);
+            return;
+          }
+          this.queues.default.push(client);
+        }
         this.#scheduleAbandonment(client);
         this.#recordHistory(historyEventType, `C${client.id} llega -> cola`);
       }
@@ -809,7 +826,28 @@ export class Simulator {
     this.stats.serviceCompletions++;
     server.clientsServed++;
     const client = server.clientInService;
-    
+
+    if (client && client.priority === ClientPriority.VIP) {
+      const vipWait = this.clock - client.arrivalTime;
+      this.stats.maxVipWaitTime = Math.max(this.stats.maxVipWaitTime, vipWait);
+    }
+
+    if (this.maxTripsPerBattery && this.maxTripsPerBattery > 0) {
+      server.tripsCompleted = (server.tripsCompleted || 0) + 1;
+      if (server.tripsCompleted >= this.maxTripsPerBattery) {
+        server.tripsCompleted = this.maxTripsPerBattery;
+        server.state = ServerState.BREAK;
+        server.present = false;
+        server.clientInService = null;
+        server.serviceEndTime = null;
+        const rechargeDuration = Number.isFinite(parseFloat(this.config.restTime)) ? parseFloat(this.config.restTime) : 1200;
+        this.stats.rechargeCycles++;
+        this.#recordHistory(EventType.SERVER_BREAK_START, `S${server.id} entra en recarga (${this.maxTripsPerBattery} viajes completados)`);
+        this.fel.push(createEvent(this.clock + rechargeDuration, EventType.SERVER_BREAK_END, { serverId: server.id, reason: 'battery' }));
+        return;
+      }
+    }
+
     let nextAction = '';
 
     if (this.topology === SystemTopology.CHAINED && client.currentStage < this.numServers - 1) {
@@ -996,6 +1034,17 @@ export class Simulator {
   #handleServerBreakEnd(event) {
     const server = this.servers.find(s => s.id === event.data.serverId);
     if (!server) return;
+
+    if (event.data.reason === 'battery') {
+      server.present = true;
+      server.state = ServerState.IDLE;
+      server.clientInService = null;
+      server.serviceEndTime = null;
+      server.tripsCompleted = 0;
+      this.#recordHistory(EventType.SERVER_BREAK_END, `S${server.id} termina recarga y vuelve a operar`);
+      this.#selectNextClientForServer(server);
+      return;
+    }
 
     this.stats.restCycles++;
     server.present = true;

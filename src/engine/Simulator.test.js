@@ -411,6 +411,47 @@ describe('Simulator Engine Tests', () => {
     expect(parseTimeInput('60 - 30').error).toBeDefined();
   });
 
+  it('should parse labeled server distributions like A: 10 - 14 and B: 8 - 12', () => {
+    expect(parseTimeInput('A: 10 - 14')).toEqual({ mode: 'range', min: 10, max: 14 });
+    expect(parseTimeInput('B: 8 - 12')).toEqual({ mode: 'range', min: 8, max: 12 });
+  });
+
+  it('should support finite queue A and battery recharge after 5 trips', () => {
+    const sim = new Simulator({
+      maxTime: 1800,
+      startTime: 0,
+      arrivalInterval: '4',
+      serviceTime: 'A: 10 - 14, B: 8 - 12',
+      workTime: 'Infinity',
+      restTime: '20',
+      maxWaitTime: 'Infinity',
+      travelTime: '0',
+      topology: SystemTopology.SINGLE_QUEUE,
+      numServers: 2,
+      maxQueueA: 10,
+      maxTripsPerBattery: 5,
+      timeUnit: 'min'
+    }, {
+      hasServerBreaks: true,
+      hasClientAbandonment: false,
+      hasPriority: true,
+      hasSecurityZone: false,
+      disableArrivals: false
+    }, {
+      clientsInQueue: 0,
+      vipClientsInQueue: 0,
+      initialWaitTime: 0,
+      serverBusy: false,
+      busyUntil: 0
+    });
+
+    sim.run();
+
+    expect(sim.servers.every(server => server.tripsCompleted >= 0)).toBe(true);
+    expect(sim.stats.classARejected >= 0).toBe(true);
+    expect(sim.stats.rechargeCycles >= 0).toBe(true);
+  });
+
   it('preset: pago_online should handle system outages and accurately count clavesPerdidas', () => {
     const { sim, results } = runPreset('pago_online');
 

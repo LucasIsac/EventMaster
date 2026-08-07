@@ -8,6 +8,20 @@ export function AcademicReportModal({ isOpen, onClose, config, flags, vocab }) {
 
   // 1. Representación con Simbología Habitual
   const renderTopology = () => {
+    if (flags.catastrophicBreakdown) {
+      return (
+        "          Sitio web funcionando\n" +
+        "              ▲       │\n" +
+        "           E3 │       │ E4\n" +
+        "              │       ▼\n" +
+        "┌──────────────────────────────────────────┐\n" +
+        "│                                          │\n" +
+        "│  E1 ➔   ○ ○ ○ (q1)    [ ps1 ] ➔ E2       │\n" +
+        "│                                          │\n" +
+        "└──────────────────────────────────────(PSW)┘"
+      );
+    }
+
     let topo = '[LL] --> ( Q )';
     if (flags.hasSecurityZone) {
       topo += ' --> [ SZ ]';
@@ -35,6 +49,15 @@ export function AcademicReportModal({ isOpen, onClose, config, flags, vocab }) {
 
   // 2. Determinación de Eventos
   const renderEvents = () => {
+    if (flags.catastrophicBreakdown) {
+      return [
+        'E1 = Llegada de clave del usuario.',
+        'E2 = Clave encriptada.',
+        'E3 = Caida del sistema.',
+        'E4 = Regreso del sistema.'
+      ];
+    }
+
     const events = [];
     if (flags.hasPriority) {
       events.push(`- Llegada VIP (LL_VIP): ${config.arrivalInterval} (Dist: ${config.arrivalDistType || 'uniform'})`);
@@ -63,6 +86,14 @@ export function AcademicReportModal({ isOpen, onClose, config, flags, vocab }) {
 
   // 3. Variables del Sistema y Auxiliares
   const renderVariables = () => {
+    if (flags.catastrophicBreakdown) {
+      return [
+        'Estado del puesto de encriptación (ps1)',
+        'Cantidad de claves en cola (q1)',
+        'Estado del sitio web (caído/no caído)'
+      ];
+    }
+
     const vars = [
       'Variables de Estado:',
       '- t: Reloj de la simulación'
@@ -100,6 +131,19 @@ export function AcademicReportModal({ isOpen, onClose, config, flags, vocab }) {
 
   // 4. Encabezado de la Matriz de Simulación
   const renderHeaders = () => {
+    if (flags.catastrophicBreakdown) {
+      return [
+        'Hora actual',
+        'Hora Prox llegada (E1)',
+        'Hora Prox fin de servicio (E2)',
+        'Hora prox caída (E3)',
+        'Hora prox regreso (E4)',
+        'Cantidad de clientes en cola q1',
+        'Estado del puesto de servicio (ps1)',
+        'Estado del sitio web'
+      ].join('\n');
+    }
+
     let headers = ['Reloj (t)', 'Próx LL', 'Próx FS', 'Q', 'PS'];
     if (flags.hasServerBreaks) {
       headers.push('Próx SS');

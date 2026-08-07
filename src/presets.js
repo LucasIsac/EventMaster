@@ -11,7 +11,7 @@ export const academicPresets = {
       restTime: '25 - 32',
       maxWaitTime: 'Infinity',
       travelTime: '0',
-      topology: 'SINGLE_QUEUE',
+      topology: 'COLA_UNICA',
       numServers: 1
     },
     flags: {
@@ -357,278 +357,102 @@ export const academicPresets = {
     },
     checkpointRules: []
   },
-  tp1_ej3: {
-    label: "TP 1 - Problema 3 (Abandono de Cola)",
-    vocab: { client: "Clientes", arrive: "llega", served: "Atendidos", abandon: "Abandonos" },
+  final: {
+    label: "Final - Centro de Distribución con AGVs",
+    vocab: {
+      client: "Pallet",
+      arrive: "Llega a cinta transportadora",
+      served: "Trasladado por AGV",
+      abandon: "Desviado por saturación (Fila A)"
+    },
     config: {
-      maxTime: 3600,
-      startTime: 32432,
-      arrivalInterval: '10, 5, 7, 7, 107, 24',
-      serviceTime: '50, 76',
-      workTime: '0',
-      restTime: '0',
-      maxWaitTime: '120',
-      travelTime: '0',
-      topology: 'COLA_UNICA',
-      numServers: 1
-    },
-    flags: {
-      hasServerBreaks: false,
-      hasClientAbandonment: true,
-      hasPriority: false,
-      hasSecurityZone: false,
-      disableArrivals: false
-    },
-    initialState: {
-      clientsInQueue: 0,
-      vipClientsInQueue: 0,
-      initialWaitTime: 0,
-      serverBusy: true,
-      busyUntil: 35,
-      firstArrivalTimes: [17]
-    },
-    checkpointRules: []
-  },
-  tp1_ej4: {
-    label: "TP 1 - Problema 4 (Clientes con Prioridad)",
-    vocab: { client: "Clientes", arrive: "llega", served: "Atendidos", abandon: "Abandonos" },
-    config: {
-      maxTime: 3600,
-      startTime: 0,
-      arrivalInterval: '30 - 90',
-      serviceTime: '20 - 60',
-      workTime: '0',
-      restTime: '0',
-      maxWaitTime: 'Infinity',
-      travelTime: '0',
-      topology: 'COLA_UNICA',
-      numServers: 1
-    },
-    flags: {
-      hasServerBreaks: false,
-      hasClientAbandonment: false,
-      hasPriority: true,
-      hasSecurityZone: false,
-      disableArrivals: false
-    },
-    initialState: {
-      clientsInQueue: 0,
-      vipClientsInQueue: 0,
-      initialWaitTime: 0,
-      serverBusy: false,
-      busyUntil: 0
-    },
-    checkpointRules: []
-  },
-  tp1_ej5: {
-    label: "TP 1 - Problema 5 (Zona de Seguridad)",
-    vocab: { client: "Clientes", arrive: "llega", served: "Atendidos", abandon: "Abandonos" },
-    config: {
-      maxTime: 3600,
-      startTime: 0,
-      arrivalInterval: '30 - 90',
-      serviceTime: '20 - 60',
-      workTime: '0',
-      restTime: '0',
-      maxWaitTime: 'Infinity',
-      travelTime: '10',
-      topology: 'COLA_UNICA',
-      numServers: 1
-    },
-    flags: {
-      hasServerBreaks: false,
-      hasClientAbandonment: false,
-      hasPriority: false,
-      hasSecurityZone: true,
-      disableArrivals: false
-    },
-    initialState: {
-      clientsInQueue: 0,
-      vipClientsInQueue: 0,
-      initialWaitTime: 0,
-      serverBusy: false,
-      busyUntil: 0
-    },
-    checkpointRules: []
-  },
-  guia3_ej1: {
-    label: "Guía 3 - Problema 1 (3 Sub-sistemas Aislados)",
-    vocab: { client: "Clientes", arrive: "llega", served: "Atendidos", abandon: "Abandonos" },
-    config: {
-      maxTime: 3600,
+      maxTime: 600,
       startTime: 28800,
-      arrivalInterval: '45, 25, 15',
-      serviceTime: '40, 20, 10',
-      workTime: '0',
-      restTime: '0',
-      maxWaitTime: 'Infinity',
-      travelTime: '0',
-      topology: 'AISLADOS',
-      numServers: 3
+      arrivalInterval: "4",
+      serviceTime: "A: 10 - 14, B: 8 - 12",
+      workTime: "Infinity",
+      restTime: "20",
+      maxWaitTime: "Infinity",
+      travelTime: "0",
+      topology: "COLA_UNICA",
+      numServers: 2,
+      maxQueueA: 10,
+      maxTripsPerBattery: 5,
+      timeUnit: "min"
     },
     flags: {
-      hasServerBreaks: false,
+      hasServerBreaks: true,
       hasClientAbandonment: false,
-      hasPriority: false,
-      hasSecurityZone: false,
-      disableArrivals: false
-    },
-    initialState: {
-      clientsInQueue: 0,
-      vipClientsInQueue: 0,
-      initialWaitTime: 0,
-      serverBusy: false,
-      busyUntil: 0,
-      serversInitialState: [
-        { busy: true, busyUntil: 180, queueLength: 4 },
-        { busy: true, busyUntil: 230, queueLength: 4 },
-        { busy: true, busyUntil: 240, queueLength: 4 }
-      ],
-      firstArrivalTimes: [300, 255, 258]
-    },
-    checkpointRules: []
-  },
-  guia3_ej2: {
-    label: "Guía 3 - Problema 2 (3 Servidores, Cola Única)",
-    vocab: { client: "Clientes", arrive: "llega", served: "Atendidos", abandon: "Abandonos" },
-    config: {
-      maxTime: 3600,
-      startTime: 37800,
-      arrivalInterval: '60, 6, 15, 2, 13',
-      serviceTime: '11, 12, 14',
-      workTime: '0',
-      restTime: '0',
-      maxWaitTime: 'Infinity',
-      travelTime: '0',
-      topology: 'COLA_UNICA',
-      numServers: 3
-    },
-    flags: {
-      hasServerBreaks: false,
-      hasClientAbandonment: false,
-      hasPriority: false,
-      hasSecurityZone: false,
-      disableArrivals: false
-    },
-    initialState: {
-      clientsInQueue: 0,
-      vipClientsInQueue: 0,
-      initialWaitTime: 0,
-      serverBusy: false,
-      busyUntil: 0,
-      serversInitialState: [
-        { busy: true, busyUntil: 60, queueLength: 4 },
-        { busy: true, busyUntil: 70, queueLength: 0 },
-        { busy: true, busyUntil: 90, queueLength: 0 }
-      ],
-      firstArrivalTimes: [20]
-    },
-    checkpointRules: []
-  },
-  guia3_ej3: {
-    label: "Guía 3 - Problema 3 (3 Etapas Sucesivas)",
-    vocab: { client: "Clientes", arrive: "llega", served: "Atendidos", abandon: "Abandonos" },
-    config: {
-      maxTime: 3600,
-      startTime: 37800,
-      arrivalInterval: '35, 16, 41, 69',
-      serviceTime: '20, 11, 7',
-      workTime: '0',
-      restTime: '0',
-      maxWaitTime: 'Infinity',
-      travelTime: '0',
-      topology: 'ENCADENADOS',
-      numServers: 3
-    },
-    flags: {
-      hasServerBreaks: false,
-      hasClientAbandonment: false,
-      hasPriority: false,
-      hasSecurityZone: false,
-      disableArrivals: false
-    },
-    initialState: {
-      clientsInQueue: 0,
-      vipClientsInQueue: 0,
-      initialWaitTime: 0,
-      serverBusy: false,
-      busyUntil: 0,
-      serversInitialState: [
-        { busy: true, busyUntil: 60, queueLength: 2 },
-        { busy: true, busyUntil: 70, queueLength: 1 },
-        { busy: true, busyUntil: 90, queueLength: 3 }
-      ],
-      firstArrivalTimes: [20]
-    },
-    checkpointRules: []
-  },
-  parcial_2018_tandem: {
-    label: "Aeropuerto Tándem (3 Rampas)",
-    vocab: { client: "Avión", arrive: "Llega de Rampa/Cielo", served: "Despegó/Aterrizó", abandon: "Desviados" },
-    config: {
-      maxTime: 14400,
-      startTime: 0,
-      arrivalInterval: '3600',
-      serviceTime: '1200 - 2400',
-      vipServiceTime: '600',
-      rampBoardingTime: '2400 - 4800',
-      numRamps: 3,
-      workTime: '0',
-      restTime: '0',
-      maxWaitTime: 'Infinity',
-      travelTime: '0',
-      topology: 'COLA_UNICA',
-      numServers: 1
-    },
-    flags: {
-      hasTandemRamps: true,
       hasPriority: true,
-      hasServerBreaks: false,
-      hasClientAbandonment: false,
       hasSecurityZone: false,
-      disableArrivals: false
+      disableArrivals: false,
+      singleWorkerChained: false,
+      catastrophicBreakdown: false,
+      vipSkipsSecurityZone: false
     },
     initialState: {
       clientsInQueue: 0,
       vipClientsInQueue: 0,
       initialWaitTime: 0,
       serverBusy: false,
-      busyUntil: 0
+      busyUntil: 0,
+      serversInitialState: [
+        { server: 1, status: "Libre", viajesRestantes: 5 },
+        { server: 2, status: "Libre", viajesRestantes: 5 }
+      ],
+      firstArrivalTimes: []
     },
-    checkpointRules: []
+    checkpointRules: [
+      { id: "checkpoint_1", type: "absolute", value: 600, label: "Fin de jornada (10 horas / 600 min)" }
+    ]
   },
-  nuevo_ejercicio_totem: {
-    label: "Ejercicio Tótem-Consultorios",
-    vocab: { client: "Pacientes", arrive: "llega al tótem", served: "Atendidos", abandon: "Abandonos" },
+  examen_final: {
+    label: "Examen Final - Centro de Distribución con AGVs (2 Vehículos, Recarga 20m)",
+    vocab: {
+      client: "Pallet",
+      arrive: "Llega a cinta transportadora",
+      served: "Trasladado por AGV",
+      abandon: "Desviado por saturación (Fila A)"
+    },
     config: {
-      maxTime: 28800,
-      startTime: 0,
-      arrivalInterval: '120',
-      serviceTime: '300 - 360',
-      specialistServiceTime: '900 - 1200',
-      workTime: '0',
-      restTime: '0',
-      maxWaitTime: '600',
-      travelTime: '0',
-      topology: 'TOTEM_SPECIALISTS',
-      numServers: 3,
-      specialistSeats: 10,
-      balkingProbability: 1.0
+      maxTime: 600,
+      startTime: 28800,
+      arrivalInterval: "4",
+      serviceTime: "A: 10 - 14, B: 8 - 12",
+      workTime: "Infinity",
+      restTime: "20",
+      maxWaitTime: "Infinity",
+      travelTime: "0",
+      topology: "COLA_UNICA",
+      numServers: 2,
+      maxQueueA: 10,
+      maxTripsPerBattery: 5,
+      timeUnit: "min"
     },
     flags: {
-      hasServerBreaks: false,
-      hasClientAbandonment: true,
-      hasPriority: false,
+      hasServerBreaks: true,
+      hasClientAbandonment: false,
+      hasPriority: true,
       hasSecurityZone: false,
-      disableArrivals: false
+      disableArrivals: false,
+      singleWorkerChained: false,
+      catastrophicBreakdown: false,
+      vipSkipsSecurityZone: false
     },
     initialState: {
       clientsInQueue: 0,
       vipClientsInQueue: 0,
       initialWaitTime: 0,
       serverBusy: false,
-      busyUntil: 0
+      busyUntil: 0,
+      serversInitialState: [
+        { server: 1, status: "Libre", viajesRestantes: 5 },
+        { server: 2, status: "Libre", viajesRestantes: 5 }
+      ],
+      firstArrivalTimes: []
     },
-    checkpointRules: []
+    checkpointRules: [
+      { id: "checkpoint_1", type: "absolute", value: 600, label: "Fin de jornada (10 horas / 600 min)" }
+    ]
   }
 };

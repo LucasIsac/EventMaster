@@ -244,6 +244,19 @@ export function generateBreakStartDiagram(config, flags) {
     d += `  A(["Descansos OFF"]):::startEnd\n`;
     return d;
   }
+  if (flags.catastrophicBreakdown) {
+    d += `  A(["Inicio Evento SS: Caída del Sistema<br>Actualizar t = t_SS"]):::startEnd --> B{"¿Servidor Ocupado?<br>PS == 1"}:::decision\n`;
+    d += `  B -->|Sí| C["Cancelar Fin Servicio (FS)"]:::action\n`;
+    d += `  C --> C2["Perdidas = Perdidas + Q + 1"]:::action\n`;
+    d += `  B -->|No| D["Perdidas = Perdidas + Q"]:::action\n`;
+    d += `  C2 --> E["Vaciar Cola: Q = 0<br>Estado Servidor: PS = A (Caído)"]:::action\n`;
+    d += `  D --> E\n`;
+    d += `  E --> F["Informar a los usuarios la caída del sitio"]:::action\n`;
+    d += `  F --> G[/"Programar Restablecimiento:<br>LS = t + ΔD (25 a 32 s)"/]:::fel\n`;
+    d += `  G --> Z(["Fin Evento Caída"]):::startEnd\n`;
+    return d;
+  }
+
   d += `  A(["Inicio Descanso<br>Actualizar t"]):::startEnd --> B["Servidor a Descanso<br>PS = A"]:::action\n`;
   d += `  B --> C[/"Fin Descanso<br>LS = t + ΔD"/]:::fel\n`;
   d += `  C --> D{"¿Estaba Ocupado?<br>PS == 1 (previo)"}:::decision\n`;
@@ -262,6 +275,14 @@ export function generateBreakEndDiagram(config, flags) {
     d += `  A(["Descansos OFF"]):::startEnd\n`;
     return d;
   }
+  if (flags.catastrophicBreakdown) {
+    d += `  A(["Inicio Evento LS: Restablecimiento<br>Actualizar t = t_LS"]):::startEnd --> B["Servidor Operativo<br>PS = 0"]:::action\n`;
+    d += `  B --> C[/"Programar Próxima Caída<br>SS = t + ΔT (126 a 258 s)"/]:::fel\n`;
+    d += `  C --> D["Esperar Próximas Llegadas<br>(Cola limpia Q=0)"]:::action\n`;
+    d += `  D --> Z(["Fin Restablecimiento"]):::startEnd\n`;
+    return d;
+  }
+
   d += `  A(["Fin Descanso<br>Actualizar t"]):::startEnd --> B["Servidor Presente"]:::action\n`;
   d += `  B --> C[/"Próximo Descanso<br>SS = t + ΔT"/]:::fel\n`;
   d += `  C --> D{"¿Cliente Pausado?"}:::decision\n`;

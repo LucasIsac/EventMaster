@@ -17,10 +17,14 @@ export function scaleTimeString(str, factor) {
  */
 export function parseTimeInput(raw) {
   if (!raw || typeof raw !== 'string') return null;
-  
-  const str = raw.trim();
-  if (str === '') return null;
-  if (str === '∞') return { mode: 'constant', value: Infinity };
+
+  const rawTrimmed = raw.trim();
+  if (rawTrimmed === '') return null;
+
+  const normalized = rawTrimmed.replace(/^([A-Za-zÀ-ÖØ-öø-ÿ_][A-Za-zÀ-ÖØ-öø-ÿ0-9_\s-]*)\s*:\s*/, '').trim();
+  const str = normalized || rawTrimmed;
+
+  if (str === '∞' || str === 'Infinity') return { mode: 'constant', value: Infinity };
   const numberPattern = /^(?:Infinity|\d+(?:\.\d+)?|\.\d+)$/;
 
   // Manejo de rangos (ej: "10 - 20" o "10-20")
@@ -51,7 +55,7 @@ export function parseTimeInput(raw) {
   // Manejo de valor constante (ej: "15")
   const num = parseFloat(str);
   if (numberPattern.test(str) && !isNaN(num) && num >= 0) return { mode: 'constant', value: num };
-  
+
   return { error: 'Formato inválido' };
 }
 

@@ -27,7 +27,12 @@ export function DiagramsModal({ isOpen, onClose, config, flags }) {
 
   useEffect(() => {
     if (!isOpen) {
-      setActiveTab('arrival'); // Reset tab when closed
+      return;
+    }
+
+    // Si el caso tiene caída catastrófica, seleccionar por defecto el evento exclusivo SS
+    if (flags?.catastrophicBreakdown && activeTab === 'arrival') {
+      setActiveTab('breakStart');
       return;
     }
 
@@ -84,8 +89,12 @@ export function DiagramsModal({ isOpen, onClose, config, flags }) {
           )}
           {flags.hasServerBreaks && (
             <>
-              <button className={`btn ${activeTab === 'breakStart' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('breakStart')}>Salida a Descanso</button>
-              <button className={`btn ${activeTab === 'breakEnd' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('breakEnd')}>Retorno de Descanso</button>
+              <button className={`btn ${activeTab === 'breakStart' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('breakStart')}>
+                {flags.catastrophicBreakdown ? '⚡ Específico: Caída del Sistema (SS)' : 'Salida a Descanso'}
+              </button>
+              <button className={`btn ${activeTab === 'breakEnd' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setActiveTab('breakEnd')}>
+                {flags.catastrophicBreakdown ? 'Restablecimiento (LS)' : 'Retorno de Descanso'}
+              </button>
             </>
           )}
           {flags.hasClientAbandonment && (
