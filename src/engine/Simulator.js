@@ -27,7 +27,8 @@ export const ServerState = {
 export const SystemTopology = {
   ISOLATED: 'AISLADOS',
   SINGLE_QUEUE: 'COLA_UNICA',
-  CHAINED: 'ENCADENADOS'
+  CHAINED: 'ENCADENADOS',
+  TOTEM_SPECIALISTS: 'TOTEM_SPECIALISTS'
 };
 
 /**
@@ -52,7 +53,8 @@ export const EventType = {
   SERVER_BREAK_END: 'LLEGADA_SERVIDOR',     // Fin del descanso de un servidor y su retorno
   ABANDONMENT: 'ABANDONO',                  // Salida prematura de la cola por vencimiento de paciencia
   ENTER_SZ: 'ENTER_SZ',                     // Entrada a la Zona de Seguridad (Problema 5 - Reservado)
-  ARRIVAL_PS: 'LLEGADA_PS'                  // Llegada al Punto de Servicio (Problema 5 - Reservado)
+  ARRIVAL_PS: 'LLEGADA_PS',                 // Llegada al Punto de Servicio (Problema 5 - Reservado)
+  RAMP_BOARDING_COMPLETE: 'FIN_ABORDAJE_RAMPA' // Fin de abordaje de una rampa (Topología Tándem)
 };
 
 // Contadores globales auto-incrementales para identificar clientes y eventos de forma unívoca.
@@ -84,6 +86,7 @@ function createEvent(time, type, data = {}) {
     [EventType.ARRIVAL_PS]: 2,
     [EventType.ARRIVAL_VIP]: 3,
     [EventType.ARRIVAL]: 4,
+    [EventType.RAMP_BOARDING_COMPLETE]: 4,
     [EventType.ENTER_SZ]: 4,
     [EventType.SERVER_BREAK_START]: 5,
     [EventType.ABANDONMENT]: 5
@@ -121,6 +124,7 @@ class Server {
     // Tiempos planificados para descansos (control de ciclos)
     this.nextBreakTime = null;     // Instante absoluto para iniciar el siguiente descanso
     this.nextWorkTime = null;      // Instante absoluto en que finalizará el descanso actual
+    this.tripsCompleted = 0;       // Cantidad de viajes realizados desde la última recarga
     
     // Variables para manejar la interrupción/pausa de servicio por descanso
     this.pausedServiceRemaining = null; // Segundos restantes de atención que faltaban cuando fue interrumpido
@@ -131,7 +135,6 @@ class Server {
     // Métricas del servidor para reportes de desempeño final e intermedios
     this.clientsServed = 0;        // Cantidad acumulada de clientes que completaron su atención aquí
     this.busyTime = 0;             // Tiempo total acumulado (en segundos) que el servidor pasó ocupado
-    this.tripsCompleted = 0;  // Contador de viajes completados (para mantenimiento por contador)
     this.lastStateChange = 0;      // Marca de tiempo de la última vez que cambió su estado (para cálculo de integrales de ocupación)
     
     this.queue = [];               // Cola local del servidor (utilizada en AISLADOS y ENCADENADOS)
@@ -181,7 +184,11 @@ export class Simulator {
     this.config = { ...config };
     this.flags = { ...flags };
     this.disableArrivals = flags.disableArrivals || false;
-    this.topology = config.topology || SystemTopology.SINGLE_QUEUE;
+    this.maxQueueA = Number.isFinite(parseFloat(this.config.maxQueueA)) ? parseFloat(this.config.maxQueueA) : Infinity;
+    this.maxTripsPerBattery = Number.isFinite(parseFloat(this.config.maxTripsPerBattery)) ? parseFloat(this.config.maxTripsPerBattery) : null;
+    let topo = config.topology || SystemTopology.SINGLE_QUEUE;
+    if (topo === 'SINGLE_QUEUE') topo = SystemTopology.SINGLE_QUEUE;
+    this.topology = topo;
     this.numServers = parseInt(config.numServers) || 1;
 
     /**
@@ -252,17 +259,6 @@ export class Simulator {
       return getGenerator(val, this.config.serviceDistType || 'uniform');
     });
 
-    // Generadores de servicio diferenciados para clientes VIP (si se configuró serviceTimeVip)
-    if (this.config.serviceTimeVip) {
-      const srvVipIntervals = splitConfigValue(this.config.serviceTimeVip, this.numServers);
-      this.serviceGeneratorsVip = Array.from({ length: this.numServers }, (_, i) => {
-        const val = srvVipIntervals[i] !== undefined ? srvVipIntervals[i] : srvVipIntervals[0];
-        return getGenerator(val, this.config.serviceDistType || 'uniform');
-      });
-    } else {
-      this.serviceGeneratorsVip = null;
-    }
-
     // Generadores generales activos del sistema
     this.generators = {
       arrival: this.arrivalGenerators[0],
@@ -273,6 +269,16 @@ export class Simulator {
       patience: getGenerator(this.config.maxWaitTime, this.config.patienceDistType || 'uniform'),
     };
 
+    if (this.flags.hasTandemRamps) {
+      this.generators.rampBoarding = getGenerator(this.config.rampBoardingTime, this.config.rampBoardingDistType || 'uniform');
+    }
+    if (this.config.vipServiceTime) {
+      this.generators.vipService = getGenerator(this.config.vipServiceTime, this.config.vipServiceDistType || 'uniform');
+    }
+    if (this.topology === SystemTopology.TOTEM_SPECIALISTS) {
+      this.generators.specialistService = getGenerator(this.config.specialistServiceTime || '0', this.config.serviceDistType || 'uniform');
+    }
+
     this.initialState = initialState;
     this.clock = this.config.startTime; // El reloj inicia en la hora absoluta elegida (ej. 28800s para 8:00 AM)
     this.fel = [];                      // Future Event List - Colección de eventos ordenados cronológicamente
@@ -280,7 +286,8 @@ export class Simulator {
     // Estructuras de cola globales para la topología de COLA_UNICA
     this.queues = {
       default: [], // Cola para clientes normales (Prioridad A)
-      vip: []      // Cola para clientes VIP (Prioridad B)
+      vip: [],     // Cola para clientes VIP (Prioridad B)
+      specialists: [] // Cola específica para especialistas en TOTEM_SPECIALISTS
     };
 
     // Inicialización del pool de servidores del sistema
@@ -291,16 +298,19 @@ export class Simulator {
     // Acumuladores estadísticos del sistema
     this.stats = {
       clientsServed: 0,                   // Total de clientes atendidos que salieron del sistema
-      clientsAbandoned: 0,                // Total de clientes que abandonaron por pérdida de paciencia
+      clientsAbandoned: 0,                // Total de clientes que abandonaron por pérdida de paciencia o caídas
+      clavesPerdidas: 0,                  // Total de claves/clientes perdidos por caídas del sistema
       abandonmentsFirstHour: 0,           // Cantidad de abandonos dentro de los primeros 3600 segundos (métrica académica)
       clientsServedUntilSecondBreak: 0,   // Clientes atendidos antes de que ocurra el segundo descanso en total
       serviceCompletions: 0,              // Finalizaciones de etapa/servicio, útil en topologías encadenadas
       workCycles: 0,                      // Total de ciclos de trabajo iniciados
       restCycles: 0,                      // Total de descansos de servidor completados
+      rechargeCycles: 0,                  // Total de recargas de batería completadas
       totalArrivals: 0,                   // Total de arribos registrados en el sistema
-      clientsRejected: 0,               // Clientes rechazados por capacidad máxima de cola
-      maintenanceCycles: 0,             // Ciclos de mantenimiento/recarga completados
-      maxWaitTimeVip: 0                 // Tiempo máximo de espera de un cliente VIP
+      abandonedTotem: 0,                  // Abandonos por paciencia (10 min) en fila del tótem
+      abandonedWaitingRoom: 0,            // Abandonos por falta de asiento (Sala de Espera)
+      classARejected: 0,                  // Pallets Clase A derivados por saturación de la Fila A
+      maxVipWaitTime: 0                   // Tiempo máximo de espera en fila para Clase B
     };
 
     this.history = [];             // Historial paso a paso del estado para poblar las grillas y diagramas en la UI
@@ -325,8 +335,7 @@ export class Simulator {
    * @returns {Object} Objeto cliente construido.
    */
   #createClient(arrivalTime, isVip = false, initialWait = 0) {
-    const vipProb = this.config.vipProbability !== undefined ? this.config.vipProbability : 0.3;
-    const vip = isVip || (this.flags.hasPriority && Math.random() < vipProb);
+    const vip = isVip || (this.flags.hasPriority && Math.random() < 0.3);
     const patience = this.generators.patience.next();
     return {
       id: ++clientIdCounter,
@@ -419,6 +428,17 @@ export class Simulator {
     // Programa las primeras llegadas según la topología
     this.#scheduleFirstArrivals();
 
+    // Topología Tándem: Iniciar abordaje de rampas
+    if (this.flags.hasTandemRamps) {
+      const numRamps = this.config.numRamps || 3;
+      for (let i = 1; i <= numRamps; i++) {
+        const time = this.clock + this.generators.rampBoarding.next();
+        if (time <= this.config.startTime + this.config.maxTime) {
+          this.fel.push(createEvent(time, EventType.RAMP_BOARDING_COMPLETE, { rampId: i }));
+        }
+      }
+    }
+
     this.#processExpiredQueuedClients();
     
     // Inicia el reloj de descansos para todos los servidores y asigna atenciones
@@ -448,9 +468,11 @@ export class Simulator {
   #scheduleFirstArrivals() {
     if (this.disableArrivals) return;
 
+    const explicitInitialArrivals = this.initialState?.firstArrivalTimes;
+
     // Si existen tiempos de arribo inicial explícitos (ej. para reproducción exacta de enunciados)
-    if (this.initialState.firstArrivalTimes && Array.isArray(this.initialState.firstArrivalTimes) && this.initialState.firstArrivalTimes.length > 0) {
-      this.initialState.firstArrivalTimes.forEach((timeOffset, idx) => {
+    if (Array.isArray(explicitInitialArrivals) && explicitInitialArrivals.length > 0) {
+      explicitInitialArrivals.forEach((timeOffset, idx) => {
         const absTime = this.clock + parseFloat(timeOffset);
         if (absTime <= this.config.startTime + this.config.maxTime) {
           const eventData = this.topology === SystemTopology.ISOLATED ? { serverId: this.servers[idx].id } : {};
@@ -475,12 +497,18 @@ export class Simulator {
         }
       }
     } else {
-      // Cola Única o Encadenados: un único flujo de llegadas; la prioridad se decide por cliente.
+      // Cola Única, Encadenados o TOTEM_SPECIALISTS: un único flujo de llegadas; la prioridad se decide por cliente.
       if (!this.firstArrivalScheduled) {
         this.firstArrivalScheduled = true;
         const time = this.clock + this.generators.arrival.next();
         if (time <= this.config.startTime + this.config.maxTime) {
-          this.fel.push(createEvent(time, EventType.ARRIVAL, {}));
+          if (this.flags.hasTandemRamps) {
+            if (this.flags.hasPriority) {
+              this.fel.push(createEvent(time, EventType.ARRIVAL_VIP, {}));
+            }
+          } else {
+            this.fel.push(createEvent(time, EventType.ARRIVAL, {}));
+          }
         }
       }
     }
@@ -492,6 +520,7 @@ export class Simulator {
    * @param {Server} server - Instancia del servidor.
    */
   #scheduleWorkCycle(server) {
+    if (this.maxTripsPerBattery && this.maxTripsPerBattery > 0) return;
     if (!this.flags.hasServerBreaks) return;
     if (server.present && server.nextBreakTime === null) {
       const duration = this.generators.workDuration.next();
@@ -510,7 +539,13 @@ export class Simulator {
    */
   #scheduleNextArrival(isVip = false, serverId = null) {
     if (this.disableArrivals) return;
-    const type = isVip ? EventType.ARRIVAL_VIP : EventType.ARRIVAL;
+    let type = isVip ? EventType.ARRIVAL_VIP : EventType.ARRIVAL;
+    
+    if (this.flags.hasTandemRamps && this.flags.hasPriority) {
+      type = EventType.ARRIVAL_VIP;
+    } else if (this.flags.hasTandemRamps && !this.flags.hasPriority) {
+      return;
+    }
     
     if (this.topology === SystemTopology.ISOLATED && serverId !== null) {
       const serverIdx = serverId - 1;
@@ -524,7 +559,7 @@ export class Simulator {
       if (!this.fel.some(e => e.type === EventType.ARRIVAL || e.type === EventType.ARRIVAL_VIP)) {
         const time = this.clock + this.generators.arrival.next();
         if (time <= this.config.startTime + this.config.maxTime) {
-          this.fel.push(createEvent(time, EventType.ARRIVAL, {}));
+          this.fel.push(createEvent(time, type, {}));
         }
       }
     }
@@ -616,28 +651,18 @@ export class Simulator {
         }
       } else {
         // Si no hay servidores disponibles, el cliente ingresa a la cola correspondiente
-        // Si el sistema tiene avería catastrófica y el servidor está caído, se descarta directamente
-        if (this.flags.catastrophicBreakdown && this.servers.every(s => !s.present)) {
-          this.stats.clientsAbandoned++;
-          this.#recordHistory(historyEventType, `C${client.id} llega -> descarte por avería`);
+        if (clientIsVip) {
+          this.queues.vip.push(client);
         } else {
-          if (clientIsVip) {
-            this.queues.vip.push(client);
-            this.#scheduleAbandonment(client);
-            this.#recordHistory(historyEventType, `C${client.id} llega -> cola VIP`);
-          } else {
-            // Verificar capacidad máxima de cola normal
-            const maxCap = this.config.maxQueueCapacity;
-            if (maxCap !== undefined && maxCap !== null && maxCap < Infinity && this.queues.default.length >= maxCap) {
-              this.stats.clientsRejected++;
-              this.#recordHistory(historyEventType, `C${client.id} llega -> desvío por saturación (cola llena: ${maxCap})`);
-            } else {
-              this.queues.default.push(client);
-              this.#scheduleAbandonment(client);
-              this.#recordHistory(historyEventType, `C${client.id} llega -> cola`);
-            }
+          if (this.maxQueueA !== Infinity && this.queues.default.length >= this.maxQueueA) {
+            this.stats.classARejected++;
+            this.#recordHistory(historyEventType, `C${client.id} desviado por saturación de la Fila A`);
+            return;
           }
+          this.queues.default.push(client);
         }
+        this.#scheduleAbandonment(client);
+        this.#recordHistory(historyEventType, `C${client.id} llega -> cola`);
       }
     } else if (this.topology === SystemTopology.ISOLATED) {
       // Enrutamiento al servidor especificado en el evento, o a uno aleatorio si no está definido
@@ -646,41 +671,36 @@ export class Simulator {
       if (server.state === ServerState.IDLE && server.present) {
         this.#startService(server, client);
       } else {
-        if (this.flags.catastrophicBreakdown && !server.present) {
-          this.stats.clientsAbandoned++;
-          this.#recordHistory(historyEventType, `C${client.id} llega a Sistema Aislado ${server.id} -> descarte por avería`);
-        } else {
-          server.queue.push(client);
-          this.#scheduleAbandonment(client);
-        }
+        server.queue.push(client);
+        this.#scheduleAbandonment(client);
       }
       this.#recordHistory(historyEventType, `C${client.id} llega a Sistema Aislado ${server.id}`);
     } else if (this.topology === SystemTopology.CHAINED) {
       // Los clientes siempre ingresan obligatoriamente por el Servidor 1 (Etapa 1)
       const s1 = this.servers[0];
       if (this.flags.singleWorkerChained) {
-        if (this.flags.catastrophicBreakdown && !s1.present) {
-          this.stats.clientsAbandoned++;
-          this.#recordHistory(historyEventType, `C${client.id} llega -> Etapa 1 (S1) -> descarte por avería`);
-        } else {
-          s1.queue.push(client);
-          this.#scheduleAbandonment(client);
-          this.#checkAndStartSingleWorkerChained();
-        }
+        s1.queue.push(client);
+        this.#scheduleAbandonment(client);
+        this.#checkAndStartSingleWorkerChained();
       } else {
         if (s1.state === ServerState.IDLE && s1.present) {
           this.#startService(s1, client);
         } else {
-          if (this.flags.catastrophicBreakdown && !s1.present) {
-            this.stats.clientsAbandoned++;
-            this.#recordHistory(historyEventType, `C${client.id} llega -> Etapa 1 (S1) -> descarte por avería`);
-          } else {
-            s1.queue.push(client);
-            this.#scheduleAbandonment(client);
-          }
+          s1.queue.push(client);
+          this.#scheduleAbandonment(client);
         }
       }
       this.#recordHistory(historyEventType, `C${client.id} llega -> Etapa 1 (S1)`);
+    } else if (this.topology === SystemTopology.TOTEM_SPECIALISTS) {
+      // Los clientes llegan al Tótem (Servidor 1)
+      const totem = this.servers[0];
+      if (totem.state === ServerState.IDLE && totem.present) {
+        this.#startService(totem, client);
+      } else {
+        totem.queue.push(client);
+        this.#scheduleAbandonment(client);
+      }
+      this.#recordHistory(historyEventType, `C${client.id} llega -> Tótem`);
     }
   }
 
@@ -695,22 +715,17 @@ export class Simulator {
     client.passedSecurityZone = false;
     server.setState(ServerState.BUSY, this.clock);
     server.clientInService = client;
-
-    // Rastrear tiempo máximo de espera VIP
-    if (client.priority === 'B' && this.flags.hasPriority) {
-      const waitTime = this.clock - client.arrivalTime;
-      if (waitTime > this.stats.maxWaitTimeVip) {
-        this.stats.maxWaitTimeVip = waitTime;
-      }
-    }
-
-    let gen;
-    if (client.priority === 'B' && this.serviceGeneratorsVip) {
-      gen = this.serviceGeneratorsVip[server.id - 1] || this.serviceGeneratorsVip[0];
+    
+    let duration;
+    if (client.priority === ClientPriority.VIP && this.generators.vipService) {
+      duration = this.generators.vipService.next();
+    } else if (this.topology === SystemTopology.TOTEM_SPECIALISTS && server.id > 1 && this.generators.specialistService) {
+      duration = this.generators.specialistService.next();
     } else {
-      gen = this.serviceGenerators[server.id - 1] || this.serviceGenerators[0];
+      const gen = this.serviceGenerators[server.id - 1] || this.serviceGenerators[0];
+      duration = gen.next();
     }
-    const duration = gen.next();
+    
     server.serviceEndTime = this.clock + duration;
     this.fel.push(createEvent(server.serviceEndTime, EventType.SERVICE_END, { serverId: server.id, clientId: client.id }));
   }
@@ -813,7 +828,28 @@ export class Simulator {
     this.stats.serviceCompletions++;
     server.clientsServed++;
     const client = server.clientInService;
-    
+
+    if (client && client.priority === ClientPriority.VIP) {
+      const vipWait = this.clock - client.arrivalTime;
+      this.stats.maxVipWaitTime = Math.max(this.stats.maxVipWaitTime, vipWait);
+    }
+
+    if (this.maxTripsPerBattery && this.maxTripsPerBattery > 0) {
+      server.tripsCompleted = (server.tripsCompleted || 0) + 1;
+      if (server.tripsCompleted >= this.maxTripsPerBattery) {
+        server.tripsCompleted = this.maxTripsPerBattery;
+        server.state = ServerState.BREAK;
+        server.present = false;
+        server.clientInService = null;
+        server.serviceEndTime = null;
+        const rechargeDuration = Number.isFinite(parseFloat(this.config.restTime)) ? parseFloat(this.config.restTime) : 1200;
+        this.stats.rechargeCycles++;
+        this.#recordHistory(EventType.SERVER_BREAK_START, `S${server.id} entra en recarga (${this.maxTripsPerBattery} viajes completados)`);
+        this.fel.push(createEvent(this.clock + rechargeDuration, EventType.SERVER_BREAK_END, { serverId: server.id, reason: 'battery' }));
+        return;
+      }
+    }
+
     let nextAction = '';
 
     if (this.topology === SystemTopology.CHAINED && client.currentStage < this.numServers - 1) {
@@ -829,43 +865,51 @@ export class Simulator {
       } else {
         nextServer.queue.push(client);
       }
+    } else if (this.topology === SystemTopology.TOTEM_SPECIALISTS && serverId === 1) {
+      // El cliente terminó en el Tótem y pasa a la sala de espera
+      const seats = this.config.specialistSeats || 10;
+      const queueLen = this.queues.specialists.length;
+      
+      if (queueLen >= seats) {
+        // Asientos ocupados: probabilidad de abandono
+        const prob = this.config.balkingProbability !== undefined ? parseFloat(this.config.balkingProbability) : 1.0;
+        if (Math.random() < prob) {
+          // Abandona por no tener asiento
+          this.stats.abandonedWaitingRoom++;
+          this.stats.clientsAbandoned++;
+          nextAction = `C${clientId} abandona sala de espera (sin asiento)`;
+        } else {
+          // Decide quedarse de pie
+          this.queues.specialists.push(client);
+          nextAction = `C${clientId} espera de pie (sin asiento)`;
+        }
+      } else {
+        // Hay asientos, busca un especialista libre
+        const freeSpecialist = this.servers.slice(1).find(s => s.state === ServerState.IDLE && s.present);
+        if (freeSpecialist) {
+          this.#startService(freeSpecialist, client);
+          nextAction = `C${clientId} avanza a Especialista ${freeSpecialist.id}`;
+        } else {
+          this.queues.specialists.push(client);
+          nextAction = `C${clientId} se sienta a esperar`;
+        }
+      }
     } else {
       // El cliente sale definitivamente de la red de servidores del sistema
       nextAction = `C${clientId} termina servicio y sale del sistema`;
       this.stats.clientsServed++;
     }
 
-    // Incrementar contador de viajes del servidor
-    server.tripsCompleted++;
-
-    // Verificar si el servidor necesita mantenimiento por contador
-    const maintEveryN = parseInt(this.config.maintenanceEveryN) || 0;
-    if (maintEveryN > 0 && server.tripsCompleted >= maintEveryN) {
-      // Servidor entra en mantenimiento/recarga
-      server.tripsCompleted = 0;
-      server.setState(ServerState.BREAK, this.clock);
+    // Libera al servidor y busca el próximo cliente
+    if (this.flags.singleWorkerChained) {
+      server.setState(ServerState.IDLE, this.clock);
       server.clientInService = null;
       server.serviceEndTime = null;
-      server.present = false;
-
-      const maintTime = parseFloat(this.config.maintenanceTime) || 0;
-      server.nextWorkTime = this.clock + maintTime;
-      this.stats.maintenanceCycles++;
-
-      this.fel.push(createEvent(server.nextWorkTime, EventType.SERVER_BREAK_END, { serverId: server.id }));
-      this.#recordHistory(EventType.SERVICE_END, `${nextAction} | S${server.id} -> mantenimiento (${maintEveryN} viajes)`);
+      this.#checkAndStartSingleWorkerChained();
+      this.#recordHistory(EventType.SERVICE_END, nextAction);
     } else {
-      // Libera al servidor y busca el próximo cliente
-      if (this.flags.singleWorkerChained) {
-        server.setState(ServerState.IDLE, this.clock);
-        server.clientInService = null;
-        server.serviceEndTime = null;
-        this.#checkAndStartSingleWorkerChained();
-        this.#recordHistory(EventType.SERVICE_END, nextAction);
-      } else {
-        this.#selectNextClientForServer(server);
-        this.#recordHistory(EventType.SERVICE_END, nextAction);
-      }
+      this.#selectNextClientForServer(server);
+      this.#recordHistory(EventType.SERVICE_END, nextAction);
     }
   }
 
@@ -885,6 +929,12 @@ export class Simulator {
     if (this.topology === SystemTopology.SINGLE_QUEUE) {
       // En cola única, los clientes VIP tienen absoluta prioridad de atención
       nextClient = this.queues.vip.shift() || this.queues.default.shift();
+    } else if (this.topology === SystemTopology.TOTEM_SPECIALISTS) {
+      if (server.id === 1) {
+        nextClient = server.queue.shift(); // El Tótem usa su propia cola
+      } else {
+        nextClient = this.queues.specialists.shift(); // Especialistas usan la sala compartida
+      }
     } else {
       if (this.flags.hasPriority) {
         const vipIdx = server.queue.findIndex(c => c.priority === ClientPriority.VIP);
@@ -947,6 +997,7 @@ export class Simulator {
       if (oldState === ServerState.BUSY) totalDescartados += 1;
 
       this.stats.clientsAbandoned += totalDescartados;
+      this.stats.clavesPerdidas += totalDescartados;
       
       this.queues.default = [];
       this.queues.vip = [];
@@ -955,10 +1006,12 @@ export class Simulator {
 
       server.clientInService = null;
       server.serviceEndTime = null;
+      server.pausedClient = null;
+      server.pausedServiceRemaining = null;
       
       this.fel = this.fel.filter(e => !(e.type === EventType.SERVICE_END && e.data.serverId === server.id));
 
-      this.#recordHistory(EventType.SERVER_BREAK_START, `S${server.id} se rompe -> ${totalDescartados} descartes`);
+      this.#recordHistory(EventType.SERVER_BREAK_START, `S${server.id} sufre caída -> ${totalDescartados} descartes/claves perdidas`);
     } else {
       if (oldState === ServerState.BUSY) {
         // Guarda el tiempo remanente de servicio para reanudarlo posteriormente
@@ -983,6 +1036,17 @@ export class Simulator {
   #handleServerBreakEnd(event) {
     const server = this.servers.find(s => s.id === event.data.serverId);
     if (!server) return;
+
+    if (event.data.reason === 'battery') {
+      server.present = true;
+      server.state = ServerState.IDLE;
+      server.clientInService = null;
+      server.serviceEndTime = null;
+      server.tripsCompleted = 0;
+      this.#recordHistory(EventType.SERVER_BREAK_END, `S${server.id} termina recarga y vuelve a operar`);
+      this.#selectNextClientForServer(server);
+      return;
+    }
 
     this.stats.restCycles++;
     server.present = true;
@@ -1042,10 +1106,50 @@ export class Simulator {
     // Si el cliente todavía estaba esperando, concreta el abandono e incrementa métricas
     if (client) {
       this.stats.clientsAbandoned++;
+      if (this.topology === SystemTopology.TOTEM_SPECIALISTS) {
+        this.stats.abandonedTotem++;
+      }
       if (this.clock - this.config.startTime <= 3600) {
         this.stats.abandonmentsFirstHour++;
       }
       this.#recordHistory(EventType.ABANDONMENT, `C${clientId} abandona cola`);
+    }
+  }
+
+  /**
+   * Maneja el fin del abordaje de una rampa.
+   * Coloca el cliente normal (avión para despegue) en el sistema y agenda inmediatamente el siguiente abordaje.
+   * @param {Object} event - Evento extraído de la FEL.
+   */
+  #handleRampBoardingComplete(event) {
+    const rampId = event.data.rampId;
+    
+    const client = this.#createClient(this.clock, false);
+    client.priority = ClientPriority.NORMAL; // Forzar normal
+    this.stats.totalArrivals++;
+    
+    if (this.topology === SystemTopology.SINGLE_QUEUE) {
+      const freeServer = this.servers.find(s => s.state === ServerState.IDLE && s.present);
+      
+      if (freeServer && (!this.flags.hasSecurityZone || !this.szBusy)) {
+        if (this.flags.hasSecurityZone) {
+          this.#sendClientThroughSecurityZone(freeServer, client);
+          this.#recordHistory(EventType.RAMP_BOARDING_COMPLETE, `C${client.id} (Rampa ${rampId}) -> SZ`);
+        } else {
+          this.#startService(freeServer, client);
+          this.#recordHistory(EventType.RAMP_BOARDING_COMPLETE, `C${client.id} (Rampa ${rampId}) -> S${freeServer.id}`);
+        }
+      } else {
+        this.queues.default.push(client);
+        this.#scheduleAbandonment(client);
+        this.#recordHistory(EventType.RAMP_BOARDING_COMPLETE, `C${client.id} (Rampa ${rampId}) -> cola`);
+      }
+    }
+    
+    // Abastecimiento infinito: reprogramar la rampa para su próximo fin de abordaje
+    const time = this.clock + this.generators.rampBoarding.next();
+    if (time <= this.config.startTime + this.config.maxTime) {
+      this.fel.push(createEvent(time, EventType.RAMP_BOARDING_COMPLETE, { rampId }));
     }
   }
 
@@ -1093,6 +1197,7 @@ export class Simulator {
       case EventType.SERVER_BREAK_END: this.#handleServerBreakEnd(event); break;
       case EventType.ABANDONMENT: this.#handleAbandonment(event); break;
       case EventType.ARRIVAL_PS: this.#handleArrivalPS(event); break;
+      case EventType.RAMP_BOARDING_COMPLETE: this.#handleRampBoardingComplete(event); break;
     }
 
     // Re-evalúa checkpoints en cada paso para ver si se toman fotos
@@ -1127,8 +1232,7 @@ export class Simulator {
         present: s.present,
         nextBreakTime: s.nextBreakTime,
         nextWorkTime: s.nextWorkTime,
-        queue: [...s.queue],
-        tripsCompleted: s.tripsCompleted
+        queue: [...s.queue]
       })),
       queueLength: totalQueueLength,
       vipQueueLength: this.queues.vip.length,
@@ -1219,8 +1323,7 @@ export class Simulator {
           return {
             id: s.id,
             utilization: totalTime > 0 ? (bTime / totalTime * 100).toFixed(1) : 0,
-            clientsServed: s.clientsServed,
-            tripsCompleted: s.tripsCompleted
+            clientsServed: s.clientsServed
           };
         })
       }

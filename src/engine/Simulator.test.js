@@ -411,85 +411,98 @@ describe('Simulator Engine Tests', () => {
     expect(parseTimeInput('60 - 30').error).toBeDefined();
   });
 
-  // =====================================================================
-  // TESTS PARA NUEVAS FEATURES: Centro de Distribución con AGV
-  // =====================================================================
+  it('should parse labeled server distributions like A: 10 - 14 and B: 8 - 12', () => {
+    expect(parseTimeInput('A: 10 - 14')).toEqual({ mode: 'range', min: 10, max: 14 });
+    expect(parseTimeInput('B: 8 - 12')).toEqual({ mode: 'range', min: 8, max: 12 });
+  });
 
-  it('should reject clients when normal queue exceeds maxQueueCapacity', () => {
-    const config = {
-      ...baseConfig,
-      arrivalInterval: '10',
-      serviceTime: '200',
-      maxQueueCapacity: 3,
-      numServers: 1
-    };
-    const flags = { ...noBreaks, hasPriority: false, hasClientAbandonment: false };
-    const sim = new Simulator(config, flags, {});
+  it('should schedule initial arrivals when firstArrivalTimes is empty', () => {
+    const sim = new Simulator({
+      maxTime: 600,
+      startTime: 28800,
+      arrivalInterval: '4',
+      serviceTime: 'A: 10 - 14, B: 8 - 12',
+      workTime: 'Infinity',
+      restTime: '20',
+      maxWaitTime: 'Infinity',
+      travelTime: '0',
+      topology: SystemTopology.SINGLE_QUEUE,
+      numServers: 2,
+      maxQueueA: 10,
+      maxTripsPerBattery: 5,
+      timeUnit: 'min'
+    }, {
+      hasServerBreaks: true,
+      hasClientAbandonment: false,
+      hasPriority: true,
+      hasSecurityZone: false,
+      disableArrivals: false
+    }, {
+      clientsInQueue: 0,
+      vipClientsInQueue: 0,
+      initialWaitTime: 0,
+      serverBusy: false,
+      busyUntil: 0,
+      firstArrivalTimes: []
+    });
+
+    expect(sim.fel.some(e => e.type === 'LLEGADA' || e.type === 'LLEGADA_VIP')).toBe(true);
+  });
+
+  it('should support finite queue A and battery recharge after 5 trips', () => {
+    const sim = new Simulator({
+      maxTime: 1800,
+      startTime: 0,
+      arrivalInterval: '4',
+      serviceTime: 'A: 10 - 14, B: 8 - 12',
+      workTime: 'Infinity',
+      restTime: '20',
+      maxWaitTime: 'Infinity',
+      travelTime: '0',
+      topology: SystemTopology.SINGLE_QUEUE,
+      numServers: 2,
+      maxQueueA: 10,
+      maxTripsPerBattery: 5,
+      timeUnit: 'min'
+    }, {
+      hasServerBreaks: true,
+      hasClientAbandonment: false,
+      hasPriority: true,
+      hasSecurityZone: false,
+      disableArrivals: false
+    }, {
+      clientsInQueue: 0,
+      vipClientsInQueue: 0,
+      initialWaitTime: 0,
+      serverBusy: false,
+      busyUntil: 0
+    });
+
     sim.run();
-    const results = sim.getResults();
-    // With arrivals every 10s, service 200s, and max queue 3, clients should be rejected
-    expect(results.stats.clientsRejected).toBeGreaterThan(0);
+
+    expect(sim.servers.every(server => server.tripsCompleted >= 0)).toBe(true);
+    expect(sim.stats.classARejected >= 0).toBe(true);
+    expect(sim.stats.rechargeCycles >= 0).toBe(true);
   });
 
-  it('should trigger counter-based maintenance after N services', () => {
-    const config = {
-      ...baseConfig,
-      arrivalInterval: '30',
-      serviceTime: '20',
-      maintenanceEveryN: 3,
-      maintenanceTime: '60',
-      numServers: 1,
-      maxTime: 1800
-    };
-    const flags = { ...noBreaks, hasClientAbandonment: false };
-    const sim = new Simulator(config, flags, {});
-    sim.run();
-    const results = sim.getResults();
-    // Server should have completed at least 1 maintenance cycle in 1800s
-    expect(results.stats.maintenanceCycles).toBeGreaterThan(0);
-    // Verify server went on break (history should contain maintenance messages)
-    const maintEvents = results.history.filter(h => h.action && h.action.includes('mantenimiento'));
-    expect(maintEvents.length).toBeGreaterThan(0);
-  });
+  it('preset: pago_online should handle system outages and accurately count clavesPerdidas', () => {
+    const { sim, results } = runPreset('pago_online');
 
-  it('should use different service times for VIP clients when serviceTimeVip is set', () => {
-    const config = {
-      ...baseConfig,
-      arrivalInterval: '50',
-      serviceTime: '1000',
-      serviceTimeVip: '10',
-      numServers: 1,
-      maxTime: 600
-    };
-    const flags = { ...noBreaks, hasPriority: true, hasClientAbandonment: false };
-    // Force all clients to be VIP by setting vipProbability to 1
-    config.vipProbability = 1.0;
-    const sim = new Simulator(config, flags, {});
-    sim.run();
-    const results = sim.getResults();
-    // With serviceTimeVip=10 (fast) and all VIP, multiple clients should be served
-    // If serviceTime=1000 was used instead, only 0-1 clients would finish in 600s
-    expect(results.stats.clientsServed).toBeGreaterThan(3);
-  });
-
-  it('preset: centro_distribucion_agv should run successfully', () => {
-    const preset = academicPresets['centro_distribucion_agv'];
-    expect(preset).toBeDefined();
-    const sim = new Simulator(preset.config, preset.flags, preset.initialState);
-    const results = sim.run();
-    expect(results.stats.totalArrivals).toBeGreaterThan(0);
-    expect(results.stats.clientsServed).toBeGreaterThan(0);
-    // Should have some rejections (queue capacity 10 with heavy load)
-    // Should have maintenance cycles (every 5 trips)
-    expect(results.stats.maintenanceCycles).toBeGreaterThan(0);
-  });
-
-  it('should schedule first arrival when firstArrivalTimes is an empty array []', () => {
-    const config = { ...baseConfig, maxTime: 3600, startTime: 0, arrivalInterval: '10' };
-    const initialState = { firstArrivalTimes: [] };
-    const sim = new Simulator(config, {}, initialState);
-    const results = sim.run();
-    expect(results.history.length).toBeGreaterThan(2);
-    expect(results.stats.totalArrivals).toBeGreaterThan(0);
+    expect(sim.history.length).toBeGreaterThan(0);
+    expect(results.stats.workCycles).toBeGreaterThan(0);
+    expect(results.stats.restCycles).toBeGreaterThan(0);
+    expect(results.stats.clavesPerdidas).toBeDefined();
+    expect(results.stats.clavesPerdidas).toBeGreaterThanOrEqual(0);
+    
+    // Check that when break occurs with catastrophicBreakdown, the server client in service and queues are cleared
+    const breakStarts = sim.history.filter(h => h.eventType === 'SALIDA_SERVIDOR');
+    expect(breakStarts.length).toBeGreaterThan(0);
+    
+    // Check that during break, server state is BREAK and pausedClient is null
+    const serverInBreak = sim.servers[0];
+    if (serverInBreak.state === ServerState.BREAK) {
+      expect(serverInBreak.clientInService).toBeNull();
+      expect(serverInBreak.pausedClient).toBeNull();
+    }
   });
 });

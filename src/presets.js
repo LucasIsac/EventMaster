@@ -1,4 +1,36 @@
 export const academicPresets = {
+  pago_online: {
+    label: "Sitio de Pago On Line (Caídas y Pérdida de Claves)",
+    vocab: { client: "Claves", arrive: "Ingresa clave", served: "Encriptadas", abandon: "Perdidas" },
+    config: {
+      maxTime: 3600,
+      startTime: 0,
+      arrivalInterval: '1.24 - 1.38',
+      serviceTime: '1.20 - 3.32',
+      workTime: '126 - 258',
+      restTime: '25 - 32',
+      maxWaitTime: 'Infinity',
+      travelTime: '0',
+      topology: 'COLA_UNICA',
+      numServers: 1
+    },
+    flags: {
+      hasServerBreaks: true,
+      catastrophicBreakdown: true,
+      hasClientAbandonment: false,
+      hasPriority: false,
+      hasSecurityZone: false,
+      disableArrivals: false
+    },
+    initialState: {
+      clientsInQueue: 0,
+      vipClientsInQueue: 0,
+      initialWaitTime: 0,
+      serverBusy: false,
+      busyUntil: 0
+    },
+    checkpointRules: []
+  },
   parcial_aceitunas: {
     label: "Clasificadora de Aceitunas",
     vocab: { client: "Aceitunas", arrive: "Llega a tolva", served: "Clasificadas", abandon: "Descartes" },
@@ -325,137 +357,6 @@ export const academicPresets = {
     },
     checkpointRules: []
   },
-  tp1_ej3: {
-    label: "TP 1 - Problema 3 (Abandono de Cola)",
-    vocab: { client: "Clientes", arrive: "llega", served: "Atendidos", abandon: "Abandonos" },
-    config: {
-      maxTime: 3600,
-      startTime: 32432,
-      arrivalInterval: '10, 5, 7, 7, 107, 24',
-      serviceTime: '50, 76',
-      workTime: '0',
-      restTime: '0',
-      maxWaitTime: '120',
-      travelTime: '0',
-      topology: 'COLA_UNICA',
-      numServers: 1
-    },
-    flags: {
-      hasServerBreaks: false,
-      hasClientAbandonment: true,
-      hasPriority: false,
-      hasSecurityZone: false,
-      disableArrivals: false
-    },
-    initialState: {
-      clientsInQueue: 0,
-      vipClientsInQueue: 0,
-      initialWaitTime: 0,
-      serverBusy: true,
-      busyUntil: 35,
-      firstArrivalTimes: [17]
-    },
-    checkpointRules: []
-  },
-  tp1_ej4: {
-    label: "TP 1 - Problema 4 (Clientes con Prioridad)",
-    vocab: { client: "Clientes", arrive: "llega", served: "Atendidos", abandon: "Abandonos" },
-    config: {
-      maxTime: 3600,
-      startTime: 0,
-      arrivalInterval: '30 - 90',
-      serviceTime: '20 - 60',
-      workTime: '0',
-      restTime: '0',
-      maxWaitTime: 'Infinity',
-      travelTime: '0',
-      topology: 'COLA_UNICA',
-      numServers: 1
-    },
-    flags: {
-      hasServerBreaks: false,
-      hasClientAbandonment: false,
-      hasPriority: true,
-      hasSecurityZone: false,
-      disableArrivals: false
-    },
-    initialState: {
-      clientsInQueue: 0,
-      vipClientsInQueue: 0,
-      initialWaitTime: 0,
-      serverBusy: false,
-      busyUntil: 0
-    },
-    checkpointRules: []
-  },
-  tp1_ej5: {
-    label: "TP 1 - Problema 5 (Zona de Seguridad)",
-    vocab: { client: "Clientes", arrive: "llega", served: "Atendidos", abandon: "Abandonos" },
-    config: {
-      maxTime: 3600,
-      startTime: 0,
-      arrivalInterval: '30 - 90',
-      serviceTime: '20 - 60',
-      workTime: '0',
-      restTime: '0',
-      maxWaitTime: 'Infinity',
-      travelTime: '10',
-      topology: 'COLA_UNICA',
-      numServers: 1
-    },
-    flags: {
-      hasServerBreaks: false,
-      hasClientAbandonment: false,
-      hasPriority: false,
-      hasSecurityZone: true,
-      disableArrivals: false
-    },
-    initialState: {
-      clientsInQueue: 0,
-      vipClientsInQueue: 0,
-      initialWaitTime: 0,
-      serverBusy: false,
-      busyUntil: 0
-    },
-    checkpointRules: []
-  },
-  guia3_ej1: {
-    label: "Guía 3 - Problema 1 (3 Sub-sistemas Aislados)",
-    vocab: { client: "Clientes", arrive: "llega", served: "Atendidos", abandon: "Abandonos" },
-    config: {
-      maxTime: 3600,
-      startTime: 28800,
-      arrivalInterval: '45, 25, 15',
-      serviceTime: '40, 20, 10',
-      workTime: '0',
-      restTime: '0',
-      maxWaitTime: 'Infinity',
-      travelTime: '0',
-      topology: 'AISLADOS',
-      numServers: 3
-    },
-    flags: {
-      hasServerBreaks: false,
-      hasClientAbandonment: false,
-      hasPriority: false,
-      hasSecurityZone: false,
-      disableArrivals: false
-    },
-    initialState: {
-      clientsInQueue: 0,
-      vipClientsInQueue: 0,
-      initialWaitTime: 0,
-      serverBusy: false,
-      busyUntil: 0,
-      serversInitialState: [
-        { busy: true, busyUntil: 180, queueLength: 4 },
-        { busy: true, busyUntil: 230, queueLength: 4 },
-        { busy: true, busyUntil: 240, queueLength: 4 }
-      ],
-      firstArrivalTimes: [300, 255, 258]
-    },
-    checkpointRules: []
-  },
   guia3_ej2: {
     label: "Guía 3 - Problema 2 (3 Servidores, Cola Única)",
     vocab: { client: "Clientes", arrive: "llega", served: "Atendidos", abandon: "Abandonos" },
@@ -530,44 +431,102 @@ export const academicPresets = {
     },
     checkpointRules: []
   },
-  centro_distribucion_agv: {
-    label: 'Centro de Distribución con AGV',
-    vocab: { client: 'Pallet', arrive: 'Llega', served: 'Despachado', abandon: 'Desviado' },
+  final: {
+    label: "Final - Centro de Distribución con AGVs",
+    vocab: {
+      client: "Pallet",
+      arrive: "Llega a cinta transportadora",
+      served: "Trasladado por AGV",
+      abandon: "Desviado por saturación (Fila A)"
+    },
     config: {
-      maxTime: 36000,
+      maxTime: 600,
       startTime: 28800,
-      arrivalInterval: '4',
-      serviceTime: '10 - 14',
-      serviceTimeVip: '8 - 12',
-      workTime: 'Infinity',
-      restTime: '0',
-      maxWaitTime: 'Infinity',
-      travelTime: '0',
-      topology: 'COLA_UNICA',
+      arrivalInterval: "4",
+      serviceTime: "A: 10 - 14, B: 8 - 12",
+      workTime: "Infinity",
+      restTime: "20",
+      maxWaitTime: "Infinity",
+      travelTime: "0",
+      topology: "COLA_UNICA",
       numServers: 2,
-      timeUnit: 'min',
-      vipProbability: 0.3,
-      maxQueueCapacity: 10,
-      maintenanceEveryN: 5,
-      maintenanceTime: '20'
+      maxQueueA: 10,
+      maxTripsPerBattery: 5,
+      timeUnit: "min"
     },
     flags: {
-      hasServerBreaks: false,
-      catastrophicBreakdown: false,
+      hasServerBreaks: true,
       hasClientAbandonment: false,
       hasPriority: true,
       hasSecurityZone: false,
-      vipSkipsSecurityZone: false,
       disableArrivals: false,
-      singleWorkerChained: false
+      singleWorkerChained: false,
+      catastrophicBreakdown: false,
+      vipSkipsSecurityZone: false
     },
     initialState: {
       clientsInQueue: 0,
       vipClientsInQueue: 0,
       initialWaitTime: 0,
       serverBusy: false,
-      busyUntil: 0
+      busyUntil: 0,
+      serversInitialState: [
+        { server: 1, status: "Libre", viajesRestantes: 5 },
+        { server: 2, status: "Libre", viajesRestantes: 5 }
+      ],
+      firstArrivalTimes: []
     },
-    checkpointRules: []
+    checkpointRules: [
+      { id: "checkpoint_1", type: "absolute", value: 600, label: "Fin de jornada (10 horas / 600 min)" }
+    ]
+  },
+  examen_final: {
+    label: "Examen Final - Centro de Distribución con AGVs (2 Vehículos, Recarga 20m)",
+    vocab: {
+      client: "Pallet",
+      arrive: "Llega a cinta transportadora",
+      served: "Trasladado por AGV",
+      abandon: "Desviado por saturación (Fila A)"
+    },
+    config: {
+      maxTime: 600,
+      startTime: 28800,
+      arrivalInterval: "4",
+      serviceTime: "A: 10 - 14, B: 8 - 12",
+      workTime: "Infinity",
+      restTime: "20",
+      maxWaitTime: "Infinity",
+      travelTime: "0",
+      topology: "COLA_UNICA",
+      numServers: 2,
+      maxQueueA: 10,
+      maxTripsPerBattery: 5,
+      timeUnit: "min"
+    },
+    flags: {
+      hasServerBreaks: true,
+      hasClientAbandonment: false,
+      hasPriority: true,
+      hasSecurityZone: false,
+      disableArrivals: false,
+      singleWorkerChained: false,
+      catastrophicBreakdown: false,
+      vipSkipsSecurityZone: false
+    },
+    initialState: {
+      clientsInQueue: 0,
+      vipClientsInQueue: 0,
+      initialWaitTime: 0,
+      serverBusy: false,
+      busyUntil: 0,
+      serversInitialState: [
+        { server: 1, status: "Libre", viajesRestantes: 5 },
+        { server: 2, status: "Libre", viajesRestantes: 5 }
+      ],
+      firstArrivalTimes: []
+    },
+    checkpointRules: [
+      { id: "checkpoint_1", type: "absolute", value: 600, label: "Fin de jornada (10 horas / 600 min)" }
+    ]
   }
 };
