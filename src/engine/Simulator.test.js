@@ -483,4 +483,13 @@ describe('Simulator Engine Tests', () => {
     // Should have maintenance cycles (every 5 trips)
     expect(results.stats.maintenanceCycles).toBeGreaterThan(0);
   });
+
+  it('should schedule first arrival when firstArrivalTimes is an empty array []', () => {
+    const config = { ...baseConfig, maxTime: 3600, startTime: 0, arrivalInterval: '10' };
+    const initialState = { firstArrivalTimes: [] };
+    const sim = new Simulator(config, {}, initialState);
+    const results = sim.run();
+    expect(results.history.length).toBeGreaterThan(2);
+    expect(results.stats.totalArrivals).toBeGreaterThan(0);
+  });
 });
