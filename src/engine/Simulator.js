@@ -449,7 +449,7 @@ export class Simulator {
     if (this.disableArrivals) return;
 
     // Si existen tiempos de arribo inicial explícitos (ej. para reproducción exacta de enunciados)
-    if (this.initialState.firstArrivalTimes && Array.isArray(this.initialState.firstArrivalTimes)) {
+    if (this.initialState.firstArrivalTimes && Array.isArray(this.initialState.firstArrivalTimes) && this.initialState.firstArrivalTimes.length > 0) {
       this.initialState.firstArrivalTimes.forEach((timeOffset, idx) => {
         const absTime = this.clock + parseFloat(timeOffset);
         if (absTime <= this.config.startTime + this.config.maxTime) {
