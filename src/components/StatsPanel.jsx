@@ -65,6 +65,19 @@ export function StatsPanel({ currentState, formatTime, vocab, startTime = 0 }) {
         />
         <StatBox label="Aband. 1ra h"           value={currentState?.stats.abandonmentsFirstHour || 0}          color="red" />
         <StatBox label="Atend. hasta 2° desc"    value={currentState?.stats.clientsServedUntilSecondBreak || 0}  color="blue" />
+        {currentState?.stats.clientsRejected > 0 && (
+          <StatBox label="Rechazados"       value={currentState?.stats.clientsRejected || 0}   color="red" />
+        )}
+        {currentState?.stats.maintenanceCycles > 0 && (
+          <StatBox label="Ciclos Mant."     value={currentState?.stats.maintenanceCycles || 0}  color="orange" />
+        )}
+        {currentState?.stats.maxWaitTimeVip > 0 && (
+          <StatBox 
+            label="Máx. espera VIP" 
+            value={`${Math.floor(currentState?.stats.maxWaitTimeVip / 60)}m`} 
+            color="purple" 
+          />
+        )}
       </div>
 
       {isFinished && (
@@ -78,6 +91,15 @@ export function StatsPanel({ currentState, formatTime, vocab, startTime = 0 }) {
             <div>
               <p><strong>{vocab?.served || 'Atendidos'}:</strong> {currentState.stats.clientsServed}</p>
               <p><strong>{vocab?.abandon || 'Abandonados'}:</strong> {currentState.stats.clientsAbandoned}</p>
+              {currentState.stats.clientsRejected > 0 && (
+                <p><strong>Rechazados por saturación:</strong> {currentState.stats.clientsRejected}</p>
+              )}
+              {currentState.stats.maintenanceCycles > 0 && (
+                <p><strong>Ciclos de mantenimiento:</strong> {currentState.stats.maintenanceCycles}</p>
+              )}
+              {currentState.stats.maxWaitTimeVip > 0 && (
+                <p><strong>Máx. espera VIP:</strong> {Math.floor(currentState.stats.maxWaitTimeVip / 60)} min {Math.floor(currentState.stats.maxWaitTimeVip % 60)} seg</p>
+              )}
             </div>
           </div>
         </div>

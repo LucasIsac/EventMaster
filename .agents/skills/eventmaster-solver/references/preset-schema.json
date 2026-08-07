@@ -63,6 +63,30 @@
           "type": "string",
           "enum": ["seg", "min"],
           "description": "Unidad de tiempo mostrada (segundos o minutos) (opcional)"
+        },
+        "vipProbability": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Probabilidad de que un cliente sea VIP/prioritario (0.0 a 1.0). Default: 0.3"
+        },
+        "maxQueueCapacity": {
+          "type": "number",
+          "minimum": 1,
+          "description": "Capacidad máxima de la cola normal. Clientes que llegan cuando está llena son rechazados. Si se omite, la cola es ilimitada"
+        },
+        "maintenanceEveryN": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Número de servicios completados después del cual el servidor entra en mantenimiento (0 = deshabilitado)"
+        },
+        "maintenanceTime": {
+          "type": "string",
+          "description": "Duración del mantenimiento/recarga del servidor (ej. '20' para 20 minutos si timeUnit='min')"
+        },
+        "serviceTimeVip": {
+          "type": "string",
+          "description": "Tiempo de servicio diferenciado para clientes VIP. Mismo formato que serviceTime (ej. '8 - 12')"
         }
       }
     },

@@ -410,4 +410,77 @@ describe('Simulator Engine Tests', () => {
     expect(parseTimeInput('30-60')).toEqual({ mode: 'range', min: 30, max: 60 });
     expect(parseTimeInput('60 - 30').error).toBeDefined();
   });
+
+  // =====================================================================
+  // TESTS PARA NUEVAS FEATURES: Centro de Distribución con AGV
+  // =====================================================================
+
+  it('should reject clients when normal queue exceeds maxQueueCapacity', () => {
+    const config = {
+      ...baseConfig,
+      arrivalInterval: '10',
+      serviceTime: '200',
+      maxQueueCapacity: 3,
+      numServers: 1
+    };
+    const flags = { ...noBreaks, hasPriority: false, hasClientAbandonment: false };
+    const sim = new Simulator(config, flags, {});
+    sim.run();
+    const results = sim.getResults();
+    // With arrivals every 10s, service 200s, and max queue 3, clients should be rejected
+    expect(results.stats.clientsRejected).toBeGreaterThan(0);
+  });
+
+  it('should trigger counter-based maintenance after N services', () => {
+    const config = {
+      ...baseConfig,
+      arrivalInterval: '30',
+      serviceTime: '20',
+      maintenanceEveryN: 3,
+      maintenanceTime: '60',
+      numServers: 1,
+      maxTime: 1800
+    };
+    const flags = { ...noBreaks, hasClientAbandonment: false };
+    const sim = new Simulator(config, flags, {});
+    sim.run();
+    const results = sim.getResults();
+    // Server should have completed at least 1 maintenance cycle in 1800s
+    expect(results.stats.maintenanceCycles).toBeGreaterThan(0);
+    // Verify server went on break (history should contain maintenance messages)
+    const maintEvents = results.history.filter(h => h.action && h.action.includes('mantenimiento'));
+    expect(maintEvents.length).toBeGreaterThan(0);
+  });
+
+  it('should use different service times for VIP clients when serviceTimeVip is set', () => {
+    const config = {
+      ...baseConfig,
+      arrivalInterval: '50',
+      serviceTime: '1000',
+      serviceTimeVip: '10',
+      numServers: 1,
+      maxTime: 600
+    };
+    const flags = { ...noBreaks, hasPriority: true, hasClientAbandonment: false };
+    // Force all clients to be VIP by setting vipProbability to 1
+    config.vipProbability = 1.0;
+    const sim = new Simulator(config, flags, {});
+    sim.run();
+    const results = sim.getResults();
+    // With serviceTimeVip=10 (fast) and all VIP, multiple clients should be served
+    // If serviceTime=1000 was used instead, only 0-1 clients would finish in 600s
+    expect(results.stats.clientsServed).toBeGreaterThan(3);
+  });
+
+  it('preset: centro_distribucion_agv should run successfully', () => {
+    const preset = academicPresets['centro_distribucion_agv'];
+    expect(preset).toBeDefined();
+    const sim = new Simulator(preset.config, preset.flags, preset.initialState);
+    const results = sim.run();
+    expect(results.stats.totalArrivals).toBeGreaterThan(0);
+    expect(results.stats.clientsServed).toBeGreaterThan(0);
+    // Should have some rejections (queue capacity 10 with heavy load)
+    // Should have maintenance cycles (every 5 trips)
+    expect(results.stats.maintenanceCycles).toBeGreaterThan(0);
+  });
 });

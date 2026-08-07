@@ -30,6 +30,10 @@ Cuando un usuario te presente un problema de simulación o teoría de colas para
         *   ¿Hay prioridades? Si hay clientes VIP y comunes que comparten cola (ej. aterrizajes vs despegues, emergencias vs consultas), activa `hasPriority`.
         *   ¿Hay tiempo de viaje/traslado? Si el servidor demora en desplazarse hacia el cliente o despejar la pista, activa `hasSecurityZone` e identifica el `travelTime`.
         *   ¿Los clientes VIP/prioritarios evitan el tiempo de traslado? Si es así, activa `vipSkipsSecurityZone`.
+        *   ¿Hay clasificación probabilística con porcentaje configurable? Si el porcentaje de VIP no es 30%, configurar `vipProbability` (ej. `0.4` para 40%).
+        *   ¿Hay capacidad máxima de cola? Si la cola normal tiene un límite, configurar `maxQueueCapacity` (ej. `10`). Los clientes que lleguen cuando la cola está llena son rechazados/desviados.
+        *   ¿Hay mantenimiento por contador de servicios? Si el servidor necesita pausa cada N servicios, configurar `maintenanceEveryN` (ej. `5`) y `maintenanceTime` (ej. `"20"` para 20 minutos).
+        *   ¿Los tiempos de servicio dependen del tipo de cliente? Si los VIP tienen tiempos distintos, configurar `serviceTimeVip` (ej. `"8 - 12"`).
     *   **Condiciones Iniciales:** Determina si el sistema empieza vacío o si hay clientes en cola (`clientsInQueue`) o si el servidor empieza ocupado (`serverBusy` y `busyUntil`).
     *   **Reglas de Parada (Checkpoints):** Determina cuándo se detiene la simulación (ej. después de 10 clientes servidos, al primer descanso, o a las 2 horas).
 
@@ -64,7 +68,12 @@ El JSON generado debe tener exactamente la siguiente forma:
     "travelTime": "0",
     "topology": "COLA_UNICA",
     "numServers": 1,
-    "timeUnit": "min"
+    "timeUnit": "min",
+    "vipProbability": 0.3,
+    "maxQueueCapacity": 10,
+    "maintenanceEveryN": 5,
+    "maintenanceTime": "20",
+    "serviceTimeVip": "8 - 12"
   },
   "flags": {
     "hasServerBreaks": false,

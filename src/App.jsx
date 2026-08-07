@@ -61,7 +61,7 @@ function App() {
     
     const adjustedConfig = { ...config };
     if (adjustedConfig.timeUnit === 'min') {
-      const keysToScale = ['arrivalInterval', 'serviceTime', 'workTime', 'restTime', 'travelTime', 'maxWaitTime'];
+      const keysToScale = ['arrivalInterval', 'serviceTime', 'workTime', 'restTime', 'travelTime', 'maxWaitTime', 'serviceTimeVip', 'maintenanceTime'];
       keysToScale.forEach(k => {
         if (adjustedConfig[k]) {
           adjustedConfig[k] = scaleTimeString(adjustedConfig[k], 60);

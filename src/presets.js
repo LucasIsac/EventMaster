@@ -529,5 +529,45 @@ export const academicPresets = {
       firstArrivalTimes: [20]
     },
     checkpointRules: []
+  },
+  centro_distribucion_agv: {
+    label: 'Centro de Distribución con AGV',
+    vocab: { client: 'Pallet', arrive: 'Llega', served: 'Despachado', abandon: 'Desviado' },
+    config: {
+      maxTime: 36000,
+      startTime: 28800,
+      arrivalInterval: '4',
+      serviceTime: '10 - 14',
+      serviceTimeVip: '8 - 12',
+      workTime: 'Infinity',
+      restTime: '0',
+      maxWaitTime: 'Infinity',
+      travelTime: '0',
+      topology: 'COLA_UNICA',
+      numServers: 2,
+      timeUnit: 'min',
+      vipProbability: 0.3,
+      maxQueueCapacity: 10,
+      maintenanceEveryN: 5,
+      maintenanceTime: '20'
+    },
+    flags: {
+      hasServerBreaks: false,
+      catastrophicBreakdown: false,
+      hasClientAbandonment: false,
+      hasPriority: true,
+      hasSecurityZone: false,
+      vipSkipsSecurityZone: false,
+      disableArrivals: false,
+      singleWorkerChained: false
+    },
+    initialState: {
+      clientsInQueue: 0,
+      vipClientsInQueue: 0,
+      initialWaitTime: 0,
+      serverBusy: false,
+      busyUntil: 0
+    },
+    checkpointRules: []
   }
 };

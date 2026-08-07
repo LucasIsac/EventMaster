@@ -311,3 +311,54 @@ En problemas de control de tráfico aéreo, los aviones que aterrizan tienen pri
   }
 }
 ```
+
+---
+
+## 14. Sistema con Routing Probabilístico, Capacidad Finita y Mantenimiento por Contador
+Modelo avanzado donde los clientes se clasifican probabilísticamente en dos tipos (Normal y VIP) con porcentaje configurable. La cola normal puede tener capacidad máxima (los clientes que llegan cuando está llena son rechazados/desviados). Los servidores requieren mantenimiento periódico cada N servicios completados.
+
+### Mapeo de Parámetros:
+*   `flags.hasPriority`: `true` (habilita clasificación VIP/Normal).
+*   `config.vipProbability`: Probabilidad de que un cliente sea VIP (ej. `0.3` para 30%). Default: `0.3`.
+*   `config.maxQueueCapacity`: Capacidad máxima de la cola normal. Si se omite, es ilimitada.
+*   `config.maintenanceEveryN`: Cada cuántos servicios el servidor entra en mantenimiento (ej. `5`).
+*   `config.maintenanceTime`: Duración del mantenimiento en la unidad de tiempo configurada (ej. `"20"` para 20 minutos).
+*   `config.serviceTimeVip`: Tiempo de servicio diferenciado para clientes VIP (ej. `"8 - 12"`).
+
+### Ejemplo de Configuración (Centro de Distribución con AGV):
+```json
+{
+  "label": "Centro de Distribución con AGV",
+  "config": {
+    "maxTime": 36000,
+    "startTime": 28800,
+    "arrivalInterval": "4",
+    "serviceTime": "10 - 14",
+    "serviceTimeVip": "8 - 12",
+    "workTime": "Infinity",
+    "restTime": "0",
+    "maxWaitTime": "Infinity",
+    "travelTime": "0",
+    "topology": "COLA_UNICA",
+    "numServers": 2,
+    "timeUnit": "min",
+    "vipProbability": 0.3,
+    "maxQueueCapacity": 10,
+    "maintenanceEveryN": 5,
+    "maintenanceTime": "20"
+  },
+  "flags": {
+    "hasServerBreaks": false,
+    "hasClientAbandonment": false,
+    "hasPriority": true,
+    "hasSecurityZone": false,
+    "disableArrivals": false
+  },
+  "vocab": {
+    "client": "Pallet",
+    "arrive": "Llega",
+    "served": "Despachado",
+    "abandon": "Desviado"
+  }
+}
+```

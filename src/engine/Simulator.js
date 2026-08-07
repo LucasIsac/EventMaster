@@ -131,6 +131,7 @@ class Server {
     // Métricas del servidor para reportes de desempeño final e intermedios
     this.clientsServed = 0;        // Cantidad acumulada de clientes que completaron su atención aquí
     this.busyTime = 0;             // Tiempo total acumulado (en segundos) que el servidor pasó ocupado
+    this.tripsCompleted = 0;  // Contador de viajes completados (para mantenimiento por contador)
     this.lastStateChange = 0;      // Marca de tiempo de la última vez que cambió su estado (para cálculo de integrales de ocupación)
     
     this.queue = [];               // Cola local del servidor (utilizada en AISLADOS y ENCADENADOS)
@@ -251,6 +252,17 @@ export class Simulator {
       return getGenerator(val, this.config.serviceDistType || 'uniform');
     });
 
+    // Generadores de servicio diferenciados para clientes VIP (si se configuró serviceTimeVip)
+    if (this.config.serviceTimeVip) {
+      const srvVipIntervals = splitConfigValue(this.config.serviceTimeVip, this.numServers);
+      this.serviceGeneratorsVip = Array.from({ length: this.numServers }, (_, i) => {
+        const val = srvVipIntervals[i] !== undefined ? srvVipIntervals[i] : srvVipIntervals[0];
+        return getGenerator(val, this.config.serviceDistType || 'uniform');
+      });
+    } else {
+      this.serviceGeneratorsVip = null;
+    }
+
     // Generadores generales activos del sistema
     this.generators = {
       arrival: this.arrivalGenerators[0],
@@ -285,7 +297,10 @@ export class Simulator {
       serviceCompletions: 0,              // Finalizaciones de etapa/servicio, útil en topologías encadenadas
       workCycles: 0,                      // Total de ciclos de trabajo iniciados
       restCycles: 0,                      // Total de descansos de servidor completados
-      totalArrivals: 0                    // Total de arribos registrados en el sistema
+      totalArrivals: 0,                   // Total de arribos registrados en el sistema
+      clientsRejected: 0,               // Clientes rechazados por capacidad máxima de cola
+      maintenanceCycles: 0,             // Ciclos de mantenimiento/recarga completados
+      maxWaitTimeVip: 0                 // Tiempo máximo de espera de un cliente VIP
     };
 
     this.history = [];             // Historial paso a paso del estado para poblar las grillas y diagramas en la UI
@@ -310,7 +325,8 @@ export class Simulator {
    * @returns {Object} Objeto cliente construido.
    */
   #createClient(arrivalTime, isVip = false, initialWait = 0) {
-    const vip = isVip || (this.flags.hasPriority && Math.random() < 0.3);
+    const vipProb = this.config.vipProbability !== undefined ? this.config.vipProbability : 0.3;
+    const vip = isVip || (this.flags.hasPriority && Math.random() < vipProb);
     const patience = this.generators.patience.next();
     return {
       id: ++clientIdCounter,
@@ -605,10 +621,22 @@ export class Simulator {
           this.stats.clientsAbandoned++;
           this.#recordHistory(historyEventType, `C${client.id} llega -> descarte por avería`);
         } else {
-          if (clientIsVip) this.queues.vip.push(client);
-          else this.queues.default.push(client);
-          this.#scheduleAbandonment(client);
-          this.#recordHistory(historyEventType, `C${client.id} llega -> cola`);
+          if (clientIsVip) {
+            this.queues.vip.push(client);
+            this.#scheduleAbandonment(client);
+            this.#recordHistory(historyEventType, `C${client.id} llega -> cola VIP`);
+          } else {
+            // Verificar capacidad máxima de cola normal
+            const maxCap = this.config.maxQueueCapacity;
+            if (maxCap !== undefined && maxCap !== null && maxCap < Infinity && this.queues.default.length >= maxCap) {
+              this.stats.clientsRejected++;
+              this.#recordHistory(historyEventType, `C${client.id} llega -> desvío por saturación (cola llena: ${maxCap})`);
+            } else {
+              this.queues.default.push(client);
+              this.#scheduleAbandonment(client);
+              this.#recordHistory(historyEventType, `C${client.id} llega -> cola`);
+            }
+          }
         }
       }
     } else if (this.topology === SystemTopology.ISOLATED) {
@@ -667,7 +695,21 @@ export class Simulator {
     client.passedSecurityZone = false;
     server.setState(ServerState.BUSY, this.clock);
     server.clientInService = client;
-    const gen = this.serviceGenerators[server.id - 1] || this.serviceGenerators[0];
+
+    // Rastrear tiempo máximo de espera VIP
+    if (client.priority === 'B' && this.flags.hasPriority) {
+      const waitTime = this.clock - client.arrivalTime;
+      if (waitTime > this.stats.maxWaitTimeVip) {
+        this.stats.maxWaitTimeVip = waitTime;
+      }
+    }
+
+    let gen;
+    if (client.priority === 'B' && this.serviceGeneratorsVip) {
+      gen = this.serviceGeneratorsVip[server.id - 1] || this.serviceGeneratorsVip[0];
+    } else {
+      gen = this.serviceGenerators[server.id - 1] || this.serviceGenerators[0];
+    }
     const duration = gen.next();
     server.serviceEndTime = this.clock + duration;
     this.fel.push(createEvent(server.serviceEndTime, EventType.SERVICE_END, { serverId: server.id, clientId: client.id }));
@@ -793,16 +835,37 @@ export class Simulator {
       this.stats.clientsServed++;
     }
 
-    // Libera al servidor y busca el próximo cliente
-    if (this.flags.singleWorkerChained) {
-      server.setState(ServerState.IDLE, this.clock);
+    // Incrementar contador de viajes del servidor
+    server.tripsCompleted++;
+
+    // Verificar si el servidor necesita mantenimiento por contador
+    const maintEveryN = parseInt(this.config.maintenanceEveryN) || 0;
+    if (maintEveryN > 0 && server.tripsCompleted >= maintEveryN) {
+      // Servidor entra en mantenimiento/recarga
+      server.tripsCompleted = 0;
+      server.setState(ServerState.BREAK, this.clock);
       server.clientInService = null;
       server.serviceEndTime = null;
-      this.#checkAndStartSingleWorkerChained();
-      this.#recordHistory(EventType.SERVICE_END, nextAction);
+      server.present = false;
+
+      const maintTime = parseFloat(this.config.maintenanceTime) || 0;
+      server.nextWorkTime = this.clock + maintTime;
+      this.stats.maintenanceCycles++;
+
+      this.fel.push(createEvent(server.nextWorkTime, EventType.SERVER_BREAK_END, { serverId: server.id }));
+      this.#recordHistory(EventType.SERVICE_END, `${nextAction} | S${server.id} -> mantenimiento (${maintEveryN} viajes)`);
     } else {
-      this.#selectNextClientForServer(server);
-      this.#recordHistory(EventType.SERVICE_END, nextAction);
+      // Libera al servidor y busca el próximo cliente
+      if (this.flags.singleWorkerChained) {
+        server.setState(ServerState.IDLE, this.clock);
+        server.clientInService = null;
+        server.serviceEndTime = null;
+        this.#checkAndStartSingleWorkerChained();
+        this.#recordHistory(EventType.SERVICE_END, nextAction);
+      } else {
+        this.#selectNextClientForServer(server);
+        this.#recordHistory(EventType.SERVICE_END, nextAction);
+      }
     }
   }
 
@@ -1064,7 +1127,8 @@ export class Simulator {
         present: s.present,
         nextBreakTime: s.nextBreakTime,
         nextWorkTime: s.nextWorkTime,
-        queue: [...s.queue]
+        queue: [...s.queue],
+        tripsCompleted: s.tripsCompleted
       })),
       queueLength: totalQueueLength,
       vipQueueLength: this.queues.vip.length,
@@ -1155,7 +1219,8 @@ export class Simulator {
           return {
             id: s.id,
             utilization: totalTime > 0 ? (bTime / totalTime * 100).toFixed(1) : 0,
-            clientsServed: s.clientsServed
+            clientsServed: s.clientsServed,
+            tripsCompleted: s.tripsCompleted
           };
         })
       }

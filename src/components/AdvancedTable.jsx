@@ -64,6 +64,7 @@ export function AdvancedTable({ history, flags, config, vocab }) {
 
   const maxQueue = getMaxQueueSize();
   const hasMoreClients = history.length > 0 && Math.max(...history.map(h => h.queueLength || 0)) > maxQueue;
+  const hasTrips = history.some(h => h.servers.some(s => s.tripsCompleted > 0));
 
   const renderGraphic = (servers, queueLength) => {
     if (isSingleQueue) {
@@ -128,6 +129,14 @@ export function AdvancedTable({ history, flags, config, vocab }) {
                 <th rowSpan="2" className="th-server-group">Estado</th>
               )}
 
+              {hasTrips && (
+                isMultiServer ? (
+                  <th colSpan={numServers} className="th-server-group">Viajes</th>
+                ) : (
+                  <th rowSpan="2" className="th-server-group">Viajes</th>
+                )
+              )}
+
               {flags.hasSecurityZone && (
                 <th rowSpan="2" className="th-special">Zona<br/>Seguridad</th>
               )}
@@ -160,6 +169,10 @@ export function AdvancedTable({ history, flags, config, vocab }) {
 
               {isMultiServer && Array.from({ length: numServers }, (_, i) => (
                 <th key={`ps-${i}`} className="th-server-sub">PS{i + 1}</th>
+              ))}
+
+              {hasTrips && isMultiServer && Array.from({ length: numServers }, (_, i) => (
+                <th key={`trips-${i}`} className="th-server-sub">PS{i + 1}</th>
               ))}
 
               {flags.hasServerBreaks && isMultiServer ? (
@@ -240,6 +253,20 @@ export function AdvancedTable({ history, flags, config, vocab }) {
                     <td className="td-state">
                       {getServerStateCode(entry.servers[0])}
                     </td>
+                  )}
+
+                  {hasTrips && (
+                    isMultiServer ? (
+                      entry.servers.map((s, si) => (
+                        <td key={`trips-${si}`} className="td-state">
+                          {s.tripsCompleted || 0}
+                        </td>
+                      ))
+                    ) : (
+                      <td className="td-state">
+                        {entry.servers[0].tripsCompleted || 0}
+                      </td>
+                    )
                   )}
 
                   {flags.hasSecurityZone && (

@@ -344,6 +344,28 @@ export function ConfigPanel({
                   />
                   <span>Rotura Catastrófica (Vacía la cola)</span>
                 </label>
+                <div className="config-field">
+                  <label>Mantenimiento cada N servicios</label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0 (deshabilitado)"
+                    value={config.maintenanceEveryN || ''}
+                    onChange={(e) => updateConfig('maintenanceEveryN', e.target.value === '' ? 0 : parseInt(e.target.value))}
+                  />
+                </div>
+                {(parseInt(config.maintenanceEveryN) > 0) && (
+                  <div className="config-field">
+                    <label>Duración mantenimiento</label>
+                    <TimeField
+                      value={config.maintenanceTime || ''}
+                      onChange={(v) => updateConfig('maintenanceTime', v)}
+                      distType={'uniform'}
+                      onDistTypeChange={() => {}}
+                      timeUnit={config.timeUnit}
+                    />
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -376,6 +398,39 @@ export function ConfigPanel({
               <span className="slider"></span>
               <span>Clientes VIP</span>
             </label>
+            {flags.hasPriority && (
+              <>
+                <div className="config-field">
+                  <label>ΔtS VIP — Tiempo servicio VIP</label>
+                  <TimeField
+                    value={config.serviceTimeVip || ''}
+                    onChange={(v) => updateConfig('serviceTimeVip', v)}
+                    distType={config.serviceDistType || 'uniform'}
+                    onDistTypeChange={(v) => updateConfig('serviceDistType', v)}
+                    timeUnit={config.timeUnit}
+                  />
+                </div>
+                <div className="config-field">
+                  <label>Probabilidad VIP (%)</label>
+                  <input
+                    type="number"
+                    min="1" max="99"
+                    value={Math.round((config.vipProbability !== undefined ? config.vipProbability : 0.3) * 100)}
+                    onChange={(e) => updateConfig('vipProbability', parseInt(e.target.value) / 100)}
+                  />
+                </div>
+                <div className="config-field">
+                  <label>Capacidad máx. cola normal</label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="∞ (ilimitada)"
+                    value={config.maxQueueCapacity !== undefined && config.maxQueueCapacity < Infinity ? config.maxQueueCapacity : ''}
+                    onChange={(e) => updateConfig('maxQueueCapacity', e.target.value === '' ? undefined : parseInt(e.target.value))}
+                  />
+                </div>
+              </>
+            )}
             <label className="switch">
               <input type="checkbox" checked={flags.hasSecurityZone} onChange={(e) => updateFlags('hasSecurityZone', e.target.checked)} />
               <span className="slider"></span>
